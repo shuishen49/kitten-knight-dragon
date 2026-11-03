@@ -445,7 +445,7 @@ const $=id=>document.getElementById(id);
 let heroHp=100, heroSt=100, dragonHp=1000, dragonMax=1000;
 let gameOver=false, startedAt=performance.now(), hitCount=0;
 let atkTimer=0, atkCombo=0, atkWindow=0, rollTimer=0, rollDir=new THREE.Vector3(), hurtCd=0;
-let blocking=false, camShake=0, glowLevel=.2, rollAxis='x', rollSign=1, jumpTimer=0;
+let blocking=false, camShake=0, glowLevel=.2, rollAxis='x', rollSign=1, jumpTimer=0, rollFaceY=0;
 function camBasis(){
   const f = new THREE.Vector3(); camera.getWorldDirection(f); f.y = 0;
   if(f.lengthSq() < .001) f.set(0,0,-1); f.normalize();
@@ -548,6 +548,7 @@ function tryRoll(){
   rollDir.copy(rF).multiplyScalar((keys.KeyW?1:0)-(keys.KeyS?1:0)).addScaledVector(rR, (keys.KeyD?1:0)-(keys.KeyA?1:0));
   if(rollDir.lengthSq()===0){ rollDir.copy(hero.position).sub(dragon.position).setY(0).normalize(); }
   else rollDir.normalize();
+  rollFaceY = Math.atan2(rollDir.x, rollDir.z);
   // 按翻滚方向相对朝向决定滚法：前/后 = 前滚翻（绕 X），左/右 = 侧滚（绕 Z）
   const inv = rollDir.clone().applyAxisAngle(new THREE.Vector3(0,1,0), -hero.rotation.y);
   if(Math.abs(inv.z) >= Math.abs(inv.x)){ rollAxis='x'; rollSign = inv.z>=0? 1 : -1; }
@@ -694,7 +695,7 @@ function animate(){
   // 骨骼动画状态机
   if(rigModel && mixer && !gameOver){
     let want = 'idle', once = false;
-    if(rollTimer>0){ want = rollAxis==='z'? (rollSign<0? 'rollSideL' : 'rollSideR') : (rollSign<0? 'rollBack' : 'roll'); once=true; if(!window.__wasRoll){ const ra=acts[want]; if(ra){ ra.stop(); curActName=''; } } }
+    if(rollTimer>0){ want='roll'; once=true; if(!window.__wasRoll){ acts.roll && acts.roll.stop(); curActName=''; } }
     else if(jumpTimer>0){ want='jump'; once=true; if(!window.__wasJump){ acts.jump && acts.jump.stop(); curActName=''; } }
     else if(atkTimer>0){ want='slash'; once=true; if(!window.__wasAtk){ acts.slash && acts.slash.stop(); curActName=''; } }
     else if(blocking) want='block';
@@ -708,8 +709,10 @@ function animate(){
   const dd = Math.hypot(dragon.position.x, dragon.position.z);
   if(dd>19 && dragonState!=='fly' && dragonState!=='dive'){ dragon.position.x*=19/dd; dragon.position.z*=19/dd; }
   if(!gameOver){
-    const faceVec = (moving && atkTimer<=0 && rollTimer<=0) ? mv : dragon.position.clone().sub(hero.position).setY(0);
-    if(faceVec.lengthSq()>0){ const ty=Math.atan2(faceVec.x, faceVec.z); let df=ty-hero.rotation.y; while(df>Math.PI)df-=Math.PI*2; while(df<-Math.PI)df+=Math.PI*2; hero.rotation.y += df*Math.min(1, dt*14); }
+    let faceVec = (moving && atkTimer<=0 && rollTimer<=0) ? mv : dragon.position.clone().sub(hero.position).setY(0);
+    let faceSpd = 14;
+    if(rigModel && rollTimer>0){ faceVec = rollDir; faceSpd = 26; } // 骨骼版：翻滚时转身对齐翻滚方向
+    if(faceVec.lengthSq()>0){ const ty=Math.atan2(faceVec.x, faceVec.z); let df=ty-hero.rotation.y; while(df>Math.PI)df-=Math.PI*2; while(df<-Math.PI)df+=Math.PI*2; hero.rotation.y += df*Math.min(1, dt*faceSpd); }
   }
   const bob = rigModel ? 0 : (moving && rollTimer<=0 ? Math.abs(Math.sin(t*(sprint?12:9)))*.05 : Math.sin(t*2.2)*.015);
   heroBody.position.y = -.58 + bob;
