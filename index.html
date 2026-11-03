@@ -40,6 +40,7 @@
   .dmg{position:fixed;z-index:40;font-weight:900;pointer-events:none;text-shadow:0 0 10px rgba(255,120,0,.8),0 2px 3px rgba(0,0,0,.6);animation:dmgUp .8s ease-out forwards}
   @keyframes dmgUp{0%{opacity:0;transform:translateY(6px) scale(.7)}15%{opacity:1;transform:translateY(0) scale(1.25)}100%{opacity:0;transform:translateY(-56px) scale(1)}}
   #flash{position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 40%,rgba(255,30,0,.45));z-index:25;pointer-events:none;opacity:0}
+  #flashGold{position:fixed;inset:0;background:radial-gradient(ellipse at center,rgba(255,216,130,.5),rgba(255,170,40,.16) 45%,transparent 72%);z-index:26;pointer-events:none;opacity:0}
   #endPanel{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;flex-direction:column;background-size:cover;background-position:center}
   #endPanel .veil{position:absolute;inset:0;background:rgba(10,12,6,.52)}
   #endPanel>*{position:relative}
@@ -56,7 +57,7 @@
 <div id="game"></div>
 <div id="mist"></div><div id="vignette"></div><div id="grain"></div>
 <div class="bar top"></div><div class="bar bot"></div>
-<div id="flash"></div>
+<div id="flash"></div><div id="flashGold"></div>
 <div id="hud">
   <div id="title">猫骑士屠龙<small>KITTEN KNIGHT · 雾原史诗决战</small></div>
   <button id="bgmBtn">🎵 原片BGM：开</button>
@@ -283,7 +284,7 @@ function setAct(name, once){
 function setupModel(gltf, isRig){
   const m = gltf.scene;
   m.scale.setScalar(isRig? 1.55 : 2.5);
-  m.traverse(o=>{ if(o.isMesh){ o.castShadow=true; const ms=Array.isArray(o.material)?o.material:[o.material]; ms.forEach(mm=>{ if(mm && mm.isMeshStandardMaterial) mm.envMapIntensity=.7; }); } });
+  m.traverse(o=>{ if(o.isMesh){ o.castShadow=true; const ms=Array.isArray(o.material)?o.material:[o.material]; ms.forEach(mm=>{ if(mm && mm.isMeshStandardMaterial){ mm.envMapIntensity=.7; if(!heroMats.includes(mm)) heroMats.push(mm); } }); } });
   modelPivot.add(m);
   heroBody.children.forEach(c=>{ if(c!==modelPivot && c!==shieldBubble) c.visible=false; });
   if(isRig){
@@ -435,6 +436,8 @@ function sfxClang(){ if(!AC)return; const t=AC.currentTime; [3200,4700,6100].for
 function sfxRoar(){ if(!AC)return; const t=AC.currentTime; const o=AC.createOscillator(),g=AC.createGain(),f=AC.createBiquadFilter(); o.type='sawtooth'; o.frequency.setValueAtTime(160,t); o.frequency.exponentialRampToValueAtTime(55,t+.9); f.type='lowpass'; f.frequency.value=700; env(g,t,.06,.5,1.0); o.connect(f).connect(g).connect(master); o.start(t); o.stop(t+1.05); noiseHit(t,.9,500,.3); }
 function sfxFireBurst(){ if(!AC)return; noiseHit(AC.currentTime,.5,1400,.35); }
 function sfxHurt(){ if(!AC)return; taiko(AC.currentTime,.7); }
+function sfxHit(){ if(!AC)return; const t=AC.currentTime; noiseHit(t,.13,850,.55); taiko(t,.4); }
+function sfxHoly(){ if(!AC)return; const t=AC.currentTime; [1568,2093,2637,3136].forEach((fr,i)=>{ const o=AC.createOscillator(),g=AC.createGain(); o.type='sine'; o.frequency.value=fr; env(g,t+i*.035,.004,.5, .3); o.connect(g).connect(master); o.start(t+i*.035); o.stop(t+i*.035+.6); }); noiseHit(t,.3,6500,.18); }
 addEventListener('pointerdown', initAudio);
 addEventListener('keydown', initAudio);
 const bgmBtn=document.getElementById('bgmBtn');
@@ -445,6 +448,9 @@ const $=id=>document.getElementById(id);
 let heroHp=100, heroSt=100, dragonHp=1000, dragonMax=1000;
 let gameOver=false, startedAt=performance.now(), hitCount=0;
 let atkTimer=0, atkCombo=0, atkWindow=0, rollTimer=0, rollDir=new THREE.Vector3(), hurtCd=0;
+let hitStop=0, flashT=0, hurtT=0, holyT=0, dragonKickT=0, heroKickSpd=0;
+const dragonKickDir=new THREE.Vector3(), prevDragonKick=new THREE.Vector3(), heroKickDir=new THREE.Vector3();
+const heroMats=[];
 let blocking=false, camShake=0, glowLevel=.2, rollAxis='x', rollSign=1, jumpTimer=0, rollFaceY=0;
 function camBasis(){
   const f = new THREE.Vector3(); camera.getWorldDirection(f); f.y = 0;
@@ -485,6 +491,19 @@ function shootFireball(from, to){
   fireballs.push({m, v: to.clone().sub(from).normalize().multiplyScalar(17), life:4});
   sfxFireBurst();
 }
+const holyLight = new THREE.PointLight(0xffc860, 0, 20, 1.7); scene.add(holyLight);
+const pillar = new THREE.Mesh(new THREE.CylinderGeometry(.75, 1.25, 7.5, 20, 1, true), new THREE.MeshBasicMaterial({ color:0xffd98a, transparent:true, opacity:0, blending:THREE.AdditiveBlending, side:THREE.DoubleSide, depthWrite:false }));
+pillar.position.y = -99; scene.add(pillar);
+const holyRing = new THREE.Mesh(new THREE.RingGeometry(.85, 1.12, 48), new THREE.MeshBasicMaterial({ color:0xffcf70, transparent:true, opacity:0, blending:THREE.AdditiveBlending, side:THREE.DoubleSide, depthWrite:false }));
+holyRing.rotation.x = -Math.PI/2; holyRing.position.y = -99; scene.add(holyRing);
+function holyFx(pos){
+  holyT = .5;
+  holyLight.position.copy(pos).add(new THREE.Vector3(0,1.4,0));
+  pillar.position.set(pos.x, 3.4, pos.z);
+  holyRing.position.set(pos.x, .07, pos.z);
+  const fg = $('flashGold'); fg.style.transition='none'; fg.style.opacity=.6;
+  requestAnimationFrame(()=>{ fg.style.transition='opacity .5s'; fg.style.opacity=0; });
+}
 function spawnDmg(worldPos, text, color='#ffd76a', size=26){
   const v=worldPos.clone().project(camera);
   const el=document.createElement('div'); el.className='dmg'; el.textContent=text;
@@ -500,20 +519,34 @@ function heroTakeDamage(dmg, opts={}){
   let final=dmg;
   if(blocking && heroSt>0){
     final = Math.round(dmg*.18); heroSt=Math.max(0, heroSt- dmg*.9);
-    sfxClang(); burst(hero.position.clone().add(new THREE.Vector3(0,1.1,0)), 14, 0xaad4ff, 3, 2);
-    camShake=Math.max(camShake,.12);
-  } else { flashHit(); sfxHurt(); camShake=Math.max(camShake,.3); }
+    sfxClang(); burst(hero.position.clone().add(new THREE.Vector3(0,1.1,0)), 20, 0xaad4ff, 3.5, 2.5);
+    camShake=Math.max(camShake,.12); hitStop=Math.max(hitStop,.02);
+    flashT=.3; heroMats.forEach(m=>m.emissive.setHex(0x5f9fff));
+  } else {
+    flashHit(); sfxHurt(); camShake=Math.max(camShake,.34); hitStop=Math.max(hitStop,.055);
+    flashT=.5; heroMats.forEach(m=>m.emissive.setHex(0xff2c14));
+    hurtT=.3;
+    heroKickDir.copy(hero.position).sub(dragon.position).setY(0).normalize(); heroKickSpd=3.1;
+    burst(hero.position.clone().add(new THREE.Vector3(0,1,0)), 12, 0xff7a5e, 3, 2.5);
+  }
   heroHp=Math.max(0, heroHp-final); hurtCd=.35;
   spawnDmg(hero.position.clone().add(new THREE.Vector3(0,1.9,0)), '-'+final, '#ff6a5e', 22);
   if(heroHp<=0) endGame(false);
 }
-function dragonTakeDamage(dmg){
+function dragonTakeDamage(dmg, holy=false, hitPos=null){
   if(gameOver) return;
   dragonHp=Math.max(0, dragonHp-dmg); hitCount++;
   const headWorld=new THREE.Vector3(); headPivot.getWorldPosition(headWorld);
-  burst(headWorld, 10, 0xffcc55, 3.5, 2.5); sfxClang();
-  spawnDmg(headWorld, dmg, atkCombo>=3?'#ff9a2e':'#ffd76a', atkCombo>=3?34:25);
-  if(atkCombo>=2){ const c=$('combo'); c.textContent=(atkCombo+1)+' 连斩 · 圣光!'; c.style.opacity=1; setTimeout(()=>c.style.opacity=0, 650); }
+  const hp2 = hitPos || headWorld;
+  burst(hp2, holy? 42 : 18, holy? 0xffe9a8 : 0xffcc55, holy? 5.5 : 3.5, holy? 5 : 2.5);
+  if(holy) burst(hp2, 16, 0xffffff, 3, 6);
+  sfxClang(); sfxHit();
+  hitStop = Math.max(hitStop, holy? .11 : .045);
+  camShake = Math.max(camShake, holy? .5 : .16);
+  dragonKickDir.copy(dragon.position).sub(hero.position).setY(0).normalize();
+  dragonKickT = holy? .3 : .18;
+  spawnDmg(hp2.clone().add(new THREE.Vector3(0,.9,0)), dmg, holy?'#ff9a2e':'#ffd76a', holy?36:25);
+  if(holy){ sfxHoly(); holyFx(hp2); const c=$('combo'); c.textContent='3 连斩 · 圣光爆发!'; c.style.opacity=1; setTimeout(()=>c.style.opacity=0, 800); }
   if(dragonHp<=0) endGame(true);
 }
 function tryAttack(){
@@ -529,8 +562,10 @@ function tryAttack(){
     const dHead = Math.hypot(hero.position.x-headWorld.x, hero.position.z-headWorld.z);
     if(dHero<8.2 || dHead<4.6){
       let dmg = 9 + Math.round(Math.random()*5) + (atkCombo===2?9:0);
-      if(dHead<4.6) dmg = Math.round(dmg*1.35);
-      dragonTakeDamage(dmg);
+      let hitPos;
+      if(dHead<4.6){ dmg = Math.round(dmg*1.35); hitPos = headWorld; }
+      else { hitPos = dragon.position.clone().add(hero.position.clone().sub(dragon.position).setY(0).normalize().multiplyScalar(2.4)); hitPos.y = 1.7; }
+      dragonTakeDamage(dmg, atkCombo===2, hitPos);
       if(dragonState==='breath' && Math.random()<.35){ setDragonState('strafe', .8); }
     }
   }, 130);
@@ -665,7 +700,9 @@ const clock = new THREE.Clock();
 const camTargetPos = new THREE.Vector3();
 function animate(){
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), .05);
+  const rawDt = Math.min(clock.getDelta(), .05);
+  if(hitStop>0) hitStop = Math.max(0, hitStop - rawDt);
+  const dt = hitStop>0 ? rawDt*.07 : rawDt;
   const t = clock.elapsedTime;
   if(atkTimer>0) atkTimer-=dt; if(atkWindow>0) atkWindow-=dt; else atkCombo=0;
   if(rollTimer>0) rollTimer-=dt; if(hurtCd>0) hurtCd-=dt;
@@ -768,6 +805,20 @@ function animate(){
   $('bossHp').style.width = (dragonHp/dragonMax*100)+'%';
   if(t>2.5) $('hint').style.display='none';
 
+  // ===== 打击感/特效每帧更新 =====
+  if(flashT>0){ flashT=Math.max(0, flashT-rawDt*2.1); const fi = flashT*2.4; heroMats.forEach(m=>m.emissiveIntensity=fi); }
+  if(hurtT>0 && !gameOver){ hurtT=Math.max(0, hurtT-dt); heroBody.rotation.x = -Math.sin((0.3-hurtT)/0.3*Math.PI)*.3; }
+  if(heroKickSpd>0){ hero.position.addScaledVector(heroKickDir, heroKickSpd*rawDt); heroKickSpd=Math.max(0, heroKickSpd-rawDt*15); }
+  { dragon.position.sub(prevDragonKick);
+    if(dragonKickT>0){ dragonKickT=Math.max(0, dragonKickT-rawDt); }
+    const kk = dragonKickT*dragonKickT*(dragonKickT>.22?2.4:1.3);
+    prevDragonKick.copy(dragonKickDir).multiplyScalar(kk);
+    dragon.position.add(prevDragonKick); }
+  if(holyT>0){ holyT-=rawDt; const p = 1-Math.max(0,holyT)/.5;
+    holyLight.intensity = 130*(1-p);
+    pillar.material.opacity = .5*(1-p); pillar.scale.set(1+p*1.9, 1, 1+p*1.9);
+    holyRing.material.opacity = .85*(1-p); const rs = 1+p*6.5; holyRing.scale.set(rs,rs,rs);
+    if(holyT<=0){ holyLight.intensity=0; pillar.material.opacity=0; holyRing.material.opacity=0; pillar.position.y=-99; holyRing.position.y=-99; } }
   renderer.render(scene, camera);
 }
 animate();
