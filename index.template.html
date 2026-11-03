@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>猫骑士屠龙 · Kitten Knight vs Dragon — Three.js</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#6d7568;font-family:"PingFang SC","Microsoft YaHei",sans-serif;color:#f2ecd9}
+  #game{position:fixed;inset:0}
+  canvas{display:block}
+  .bar{position:fixed;left:0;right:0;height:5vh;background:#000;z-index:20;pointer-events:none}
+  .bar.top{top:0}.bar.bot{bottom:0}
+  #vignette{position:fixed;inset:0;z-index:15;pointer-events:none;background:radial-gradient(ellipse at center,transparent 50%,rgba(8,12,6,.5) 100%)}
+  #grain{position:fixed;inset:-50%;width:200%;height:200%;z-index:16;pointer-events:none;opacity:.05;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");animation:grain .4s steps(4) infinite}
+  @keyframes grain{0%{transform:translate(0,0)}25%{transform:translate(-2%,1%)}50%{transform:translate(1%,-2%)}75%{transform:translate(-1%,2%)}100%{transform:translate(2%,-1%)}}
+  #mist{position:fixed;inset:0;z-index:14;pointer-events:none;background:linear-gradient(180deg,rgba(230,235,225,.14),transparent 45%,rgba(40,48,36,.16))}
+  #hud{position:fixed;inset:0;z-index:30;pointer-events:none}
+  #bossWrap{position:absolute;top:7vh;left:50%;transform:translateX(-50%);width:min(680px,86vw);text-align:center}
+  #bossName{font-size:15px;letter-spacing:.5em;text-shadow:0 2px 12px rgba(0,0,0,.55),0 0 24px rgba(255,110,0,.45);margin-bottom:6px;color:#ffe9bd}
+  #bossName small{display:block;font-size:10px;letter-spacing:.35em;color:#ffb27a;margin-top:3px}
+  .barOuter{height:14px;background:rgba(10,12,8,.6);border:1px solid rgba(255,200,120,.55);border-radius:7px;overflow:hidden;box-shadow:0 0 18px rgba(255,80,0,.3),inset 0 0 8px #000}
+  #bossHp{height:100%;width:100%;background:linear-gradient(90deg,#7a0d00,#e63b00,#ffb03a);transition:width .18s}
+  #bossPhase{font-size:11px;color:#ffd2a0;margin-top:4px;letter-spacing:.25em;height:14px;text-shadow:0 1px 5px rgba(0,0,0,.6)}
+  #heroHud{position:absolute;left:22px;bottom:7.5vh;width:min(320px,52vw)}
+  .label{font-size:11px;letter-spacing:.3em;color:#ffe9bd;margin:6px 0 3px;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+  .hOuter{height:12px;background:rgba(10,12,8,.6);border:1px solid rgba(240,225,190,.55);border-radius:6px;overflow:hidden}
+  #heroHp{height:100%;width:100%;background:linear-gradient(90deg,#0f7a2e,#39d353,#b6ff9e);transition:width .15s}
+  .sOuter{height:8px;background:rgba(10,12,8,.6);border:1px solid rgba(170,210,255,.45);border-radius:4px;overflow:hidden}
+  #heroSt{height:100%;width:100%;background:linear-gradient(90deg,#1c4fd8,#5cc8ff);transition:width .1s}
+  #combo{position:absolute;right:26px;top:16vh;font-size:34px;font-weight:900;color:#ffd76a;text-shadow:0 0 18px rgba(255,170,0,.95),0 2px 4px rgba(0,0,0,.5);opacity:0;transform:rotate(-4deg)}
+  #controls{position:absolute;right:22px;bottom:7.5vh;font-size:12px;line-height:1.9;color:#f5efdb;text-align:right;text-shadow:0 1px 6px rgba(0,0,0,.65)}
+  #controls b{display:inline-block;min-width:22px;text-align:center;background:rgba(240,235,210,.16);border:1px solid rgba(240,235,210,.5);border-radius:4px;padding:0 5px;margin-left:6px;color:#fff}
+  #title{position:absolute;left:22px;top:7vh;font-size:20px;font-weight:900;letter-spacing:.3em;text-shadow:0 2px 14px rgba(0,0,0,.55),0 0 24px rgba(255,190,60,.4)}
+  #title small{display:block;font-size:10px;letter-spacing:.3em;color:#ffd9a0;font-weight:400;margin-top:4px}
+  #bgmBtn{position:absolute;left:22px;top:15.5vh;pointer-events:auto;cursor:pointer;background:rgba(16,20,12,.55);border:1px solid rgba(255,210,140,.6);color:#ffe9bd;border-radius:20px;padding:6px 14px;font-size:12px;letter-spacing:.12em}
+  #bgmBtn:hover{background:rgba(60,55,20,.65)}
+  #hint{position:absolute;left:50%;bottom:13vh;transform:translateX(-50%);font-size:13px;letter-spacing:.25em;color:#fff6dd;text-shadow:0 1px 8px rgba(0,0,0,.7);animation:pulse 1.6s infinite;white-space:nowrap}
+  @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+  .dmg{position:fixed;z-index:40;font-weight:900;pointer-events:none;text-shadow:0 0 10px rgba(255,120,0,.8),0 2px 3px rgba(0,0,0,.6);animation:dmgUp .8s ease-out forwards}
+  @keyframes dmgUp{0%{opacity:0;transform:translateY(6px) scale(.7)}15%{opacity:1;transform:translateY(0) scale(1.25)}100%{opacity:0;transform:translateY(-56px) scale(1)}}
+  #flash{position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 40%,rgba(255,30,0,.45));z-index:25;pointer-events:none;opacity:0}
+  #endPanel{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;flex-direction:column;background-size:cover;background-position:center}
+  #endPanel .veil{position:absolute;inset:0;background:rgba(10,12,6,.52)}
+  #endPanel>*{position:relative}
+  #endTitle{font-size:min(60px,11vw);font-weight:900;letter-spacing:.3em;text-shadow:0 0 40px rgba(255,150,0,.75),0 4px 10px #000}
+  #endSub{margin-top:14px;font-size:15px;letter-spacing:.28em;color:#ffedb8;text-shadow:0 1px 8px #000}
+  #restartBtn{margin-top:30px;pointer-events:auto;cursor:pointer;font-size:16px;letter-spacing:.35em;padding:13px 42px 13px 48px;background:linear-gradient(180deg,#a52c00,#6e1500);color:#ffe9c9;border:1px solid #ffb03a;border-radius:6px;box-shadow:0 0 26px rgba(255,80,0,.45)}
+  #restartBtn:hover{filter:brightness(1.25)}
+  #touch{position:fixed;z-index:35;bottom:12vh;right:14px;display:none;gap:10px}
+  #touch button{width:58px;height:58px;border-radius:50%;border:1px solid rgba(255,220,160,.6);background:rgba(20,24,14,.55);color:#ffe9c9;font-size:13px}
+  @media(pointer:coarse){#touch{display:flex}#controls{display:none}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="mist"></div><div id="vignette"></div><div id="grain"></div>
+<div class="bar top"></div><div class="bar bot"></div>
+<div id="flash"></div>
+<div id="hud">
+  <div id="title">猫骑士屠龙<small>KITTEN KNIGHT · 雾原史诗决战</small></div>
+  <button id="bgmBtn">🎵 原片BGM：开</button>
+  <div id="bossWrap">
+    <div id="bossName">雾 原 黑 龙 · 伊 格 尼 斯<small>IGNIS OF THE MIST</small></div>
+    <div class="barOuter"><div id="bossHp"></div></div>
+    <div id="bossPhase"></div>
+  </div>
+  <div id="combo"></div>
+  <div id="heroHud">
+    <div class="label">猫 骑 士</div>
+    <div class="hOuter"><div id="heroHp"></div></div>
+    <div class="label" style="color:#bfe0ff">体 力（格挡 / 翻滚）</div>
+    <div class="sOuter"><div id="heroSt"></div></div>
+  </div>
+  <div id="controls">
+    移动 <b>W</b><b>A</b><b>S</b><b>D</b> · 疾跑 <b>Shift</b><br>
+    挥剑 <b>J</b> / <b>左键</b> · 举盾格挡 <b>K</b> / <b>右键按住</b><br>
+    翻滚闪避 <b>空格</b> · 三连斩第 3 剑圣光爆发
+  </div>
+  <div id="hint">雾原黑龙已至 —— 小猫骑士，拔剑！</div>
+</div>
+<div id="touch">
+  <button id="tAtk">⚔️斩</button><button id="tBlk">🛡️盾</button><button id="tRoll">💨滚</button>
+</div>
+<div id="endPanel">
+  <div class="veil"></div>
+  <div id="endTitle">屠龙成功</div>
+  <div id="endSub"></div>
+  <button id="restartBtn">再 战 一 次</button>
+</div>
+
+<script>
+window.__BGM_B64 = "%%BGM_B64%%";
+window.__GRASS_B64 = "%%GRASS_B64%%";
+window.__POSTER_B64 = "%%POSTER_B64%%";
+</script>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* ================= 雾原草原：阴天浓雾 · 冷灰绿（对标原片） ================= */
+const container = document.getElementById('game');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xa7aea0);
+scene.fog = new THREE.FogExp2(0xa3ab9d, 0.02);
+
+const camera = new THREE.PerspectiveCamera(58, innerWidth/innerHeight, 0.1, 400);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), .04).texture;
+
+const sun = new THREE.DirectionalLight(0xe8ecdf, 2.0); // 阴天漫射主光
+sun.position.set(-14, 30, -10);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left=-45; sun.shadow.camera.right=45; sun.shadow.camera.top=45; sun.shadow.camera.bottom=-45;
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xc9d1c2, 0x46523c, 1.05));
+const rim = new THREE.DirectionalLight(0xfff1cf, .95); rim.position.set(16, 10, 24); scene.add(rim);
+
+// 天空：灰雾渐变
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(180, 24, 16),
+  new THREE.ShaderMaterial({side:THREE.BackSide, vertexShader:`varying vec3 vP; void main(){vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    fragmentShader:`varying vec3 vP; void main(){ float h=normalize(vP).y; vec3 top=vec3(.48,.52,.47); vec3 mid=vec3(.72,.75,.69); vec3 bot=vec3(.82,.84,.78); vec3 c=h>0.1?mix(mid,top,smoothstep(.1,.6,h)):mix(bot,mid,smoothstep(-.08,.1,h)); gl_FragColor=vec4(c,1.);}`})
+);
+scene.add(sky);
+
+// 地面：草地贴图（生图纹理，内嵌）
+const groundMat = new THREE.MeshStandardMaterial({color:0x8a9a76, roughness:1});
+try{
+  const gt = new THREE.TextureLoader().load('data:image/jpeg;base64,'+window.__GRASS_B64);
+  gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(14,14); gt.colorSpace = THREE.SRGBColorSpace;
+  groundMat.map = gt; groundMat.color.set(0xffffff);
+}catch(e){}
+const ground = new THREE.Mesh(new THREE.CircleGeometry(80, 48), groundMat);
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+
+// 草丛（实例化小草锥）+ 灰岩 + 雾中丘陵
+const tuft = new THREE.InstancedMesh(new THREE.ConeGeometry(.09,.55,5), new THREE.MeshStandardMaterial({color:0x51663a, roughness:1}), 700);
+{ const d=new THREE.Object3D(); for(let i=0;i<700;i++){ const a=Math.random()*Math.PI*2, r=2.5+Math.random()*36; d.position.set(Math.cos(a)*r,.22,Math.sin(a)*r); d.rotation.set((Math.random()-.5)*.35, Math.random()*3, (Math.random()-.5)*.35); const s=.7+Math.random()*1.1; d.scale.set(s,s,s); d.updateMatrix(); tuft.setMatrixAt(i,d.matrix); } }
+scene.add(tuft);
+const rockMat = new THREE.MeshStandardMaterial({color:0x707a6e, roughness:1});
+for(let i=0;i<26;i++){
+  const r = new THREE.Mesh(new THREE.DodecahedronGeometry(.3+Math.random()*1.1), rockMat);
+  const a=Math.random()*Math.PI*2, dd=6+Math.random()*46;
+  r.position.set(Math.cos(a)*dd, .3, Math.sin(a)*dd); r.rotation.set(Math.random()*3,Math.random()*3,0); r.castShadow=true; scene.add(r);
+}
+const hillMat = new THREE.MeshStandardMaterial({color:0x79826c, roughness:1});
+for(let i=0;i<7;i++){
+  const a=i/7*Math.PI*2+Math.random()*.5, r=62+Math.random()*22;
+  const h=new THREE.Mesh(new THREE.SphereGeometry(20+Math.random()*16, 14, 10), hillMat);
+  h.scale.y=.22; h.position.set(Math.cos(a)*r, 0, Math.sin(a)*r); scene.add(h);
+}
+
+const dotTex = (()=>{ const c=document.createElement('canvas'); c.width=c.height=64; const x=c.getContext('2d'); const gr=x.createRadialGradient(32,32,2,32,32,30); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(.4,'rgba(255,255,255,.85)'); gr.addColorStop(1,'rgba(255,255,255,0)'); x.fillStyle=gr; x.fillRect(0,0,64,64); return new THREE.CanvasTexture(c); })();
+function makePoints(n, size, color, opacity){
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n*3), 3));
+  const m = new THREE.PointsMaterial({color, size, transparent:true, opacity, blending:THREE.AdditiveBlending, depthWrite:false, map:dotTex, alphaTest:.01});
+  const p = new THREE.Points(g, m); scene.add(p); return p;
+}
+// 雾中微光尘
+const motes = makePoints(220, .1, 0xe6ead9, .35);
+const motePos = motes.geometry.attributes.position.array;
+for(let i=0;i<220;i++){ motePos[i*3]=(Math.random()-.5)*70; motePos[i*3+1]=Math.random()*10; motePos[i*3+2]=(Math.random()-.5)*70; }
+// 猫身边的金色星火（原片标志性画面）
+const sparkles = makePoints(130, .085, 0xffd98a, .9);
+const sparkPos = sparkles.geometry.attributes.position.array;
+const sparkSeed=[];
+for(let i=0;i<130;i++){ const a=Math.random()*Math.PI*2, r=.5+Math.random()*1.7; sparkPos[i*3]=Math.cos(a)*r; sparkPos[i*3+1]=Math.random()*1.5; sparkPos[i*3+2]=Math.sin(a)*r; sparkSeed.push({a, r, s:.4+Math.random()*.9, y:Math.random()*1.5}); }
+
+/* ================= 猫骑士：奶油橘色小奶猫 + 银甲 + 粉蝴蝶结 + 圣剑 + 盾 ================= */
+function furTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=256; const x=c.getContext('2d');
+  x.fillStyle='#f0d3a4'; x.fillRect(0,0,256,256);
+  for(let i=0;i<2600;i++){ x.strokeStyle = Math.random()<.5? 'rgba(214,164,96,.25)':'rgba(255,240,210,.28)'; x.lineWidth=1;
+    const px=Math.random()*256, py=Math.random()*256; x.beginPath(); x.moveTo(px,py); x.lineTo(px+(Math.random()*6-3), py+5+Math.random()*6); x.stroke(); }
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; return t;
+}
+const furTex = furTexture();
+const furMat = new THREE.MeshStandardMaterial({map:furTex, roughness:1, bumpMap:furTex, bumpScale:.015});
+const furLight = new THREE.MeshStandardMaterial({color:0xf7e8cb, roughness:1});
+const steel = new THREE.MeshStandardMaterial({color:0xd4dae0, metalness:.92, roughness:.26});
+const steelDark = new THREE.MeshStandardMaterial({color:0x9aa3ab, metalness:.85, roughness:.4});
+const gold = new THREE.MeshStandardMaterial({color:0xd9a441, metalness:.9, roughness:.3});
+const leather = new THREE.MeshStandardMaterial({color:0x6e4a2f, roughness:.9});
+const pinkMat = new THREE.MeshStandardMaterial({color:0xf49ac1, roughness:.6});
+
+const hero = new THREE.Group(); scene.add(hero);
+const heroRoll = new THREE.Group(); heroRoll.position.set(0,.58,0); hero.add(heroRoll); // 翻滚绕身体中心转，不再绕脚底
+const heroBody = new THREE.Group(); heroBody.position.y=-.58; heroRoll.add(heroBody);
+function box(w,h,d,mat,x,y,z,parent=heroBody){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); m.position.set(x,y,z); m.castShadow=true; parent.add(m); return m; }
+function sph(r,mat,x,y,z,parent=heroBody,sx=1,sy=1,sz=1){ const m=new THREE.Mesh(new THREE.SphereGeometry(r,20,16),mat); m.position.set(x,y,z); m.scale.set(sx,sy,sz); m.castShadow=true; parent.add(m); return m; }
+// 短腿：甲靴 + 毛爪
+for(const sx of [-1,1]){
+  const boot=new THREE.Mesh(new THREE.CylinderGeometry(.085,.1,.26,10), steelDark); boot.position.set(sx*.15,.16,0); boot.castShadow=true; heroBody.add(boot);
+  sph(.085, furLight, sx*.15, .06, .07, heroBody, 1, .6, 1.3); // 爪
+}
+// 躯干银甲（圆润小肚子）
+sph(.34, steel, 0, .56, 0, heroBody, 1.05, .95, .9);
+sph(.30, steelDark, 0, .5, .1, heroBody, .95, .85, .8); // 胸腹甲片
+box(.52,.09,.4, leather, 0, .4, 0); // 皮腰带
+box(.12,.11,.03, gold, 0, .4, .21); // 带扣
+for(const sx of [-1,1]){ const skirt=box(.2,.16,.03, steel, sx*.17, .3, .14); skirt.rotation.x=.35; const skirt2=box(.2,.16,.03, steel, sx*.17, .3, -.14); skirt2.rotation.x=-.35; }
+// 肩甲（大圆肩）
+sph(.155, steel, -.33, .74, 0); sph(.155, steel, .33, .74, 0);
+// 头：超大毛脑袋
+const headG = new THREE.Group(); headG.position.set(0, 1.08, 0); heroBody.add(headG);
+sph(.38, furMat, 0, 0, 0, headG, 1, .92, .95);
+sph(.15, furLight, -.15, -.13, .27, headG, 1, .8, .8); // 脸颊
+sph(.15, furLight, .15, -.13, .27, headG, 1, .8, .8);
+sph(.07, furLight, 0, -.17, .33, headG, 1.3, .7, .8); // 嘴鼻区
+const nose = new THREE.Mesh(new THREE.ConeGeometry(.032,.03,4), new THREE.MeshStandardMaterial({color:0xe87a90, roughness:.5}));
+nose.position.set(0,-.1,.4); nose.rotation.x=Math.PI/2; headG.add(nose);
+for(const sx of [-1,1]){ // 大眼睛 + 高光
+  sph(.078, new THREE.MeshStandardMaterial({color:0x14100c, roughness:.15}), sx*.15, .02, .31, headG);
+  sph(.022, new THREE.MeshBasicMaterial({color:0xffffff}), sx*.15+.02, .05, .375, headG);
+  // 耳朵：毛锥 + 粉内耳
+  const ear=new THREE.Mesh(new THREE.ConeGeometry(.14,.3,10), furMat); ear.position.set(sx*.24,.34,-.02); ear.rotation.z=-sx*.22; ear.castShadow=true; headG.add(ear);
+  const inner=new THREE.Mesh(new THREE.ConeGeometry(.07,.16,8), pinkMat); inner.position.set(sx*.235,.32,.06); inner.rotation.z=-sx*.22; headG.add(inner);
+  // 胡须
+  for(let w=0;w<3;w++){ const wh=new THREE.Mesh(new THREE.CylinderGeometry(.0035,.0035,.3,3), new THREE.MeshBasicMaterial({color:0xffffff})); wh.position.set(sx*.34, -.12+w*.045, .3); wh.rotation.z=Math.PI/2 - sx*.12; wh.rotation.y=sx*.35; headG.add(wh); }
+}
+// 粉色蝴蝶结（左耳旁，原片标志）
+const bow = new THREE.Group(); bow.position.set(-.33, .38, .08); headG.add(bow);
+for(const sx of [-1,1]){ const loop=new THREE.Mesh(new THREE.SphereGeometry(.055,10,8), pinkMat); loop.scale.set(1.25,.8,.45); loop.position.set(sx*.06,0,0); loop.rotation.z=sx*.35; bow.add(loop); }
+sph(.032, pinkMat, 0, 0, .01, bow);
+// 右臂 + 圣剑（宽刃，第3剑发金光）
+const armR = new THREE.Group(); armR.position.set(.36,.72,0); heroBody.add(armR);
+{ const up=new THREE.Mesh(new THREE.CylinderGeometry(.07,.065,.22,8), furMat); up.position.set(0,-.1,0); armR.add(up);
+  const fore=new THREE.Mesh(new THREE.CylinderGeometry(.075,.085,.2,8), steel); fore.position.set(0,-.29,0); fore.castShadow=true; armR.add(fore);
+  sph(.075, furLight, 0, -.42, .02, armR); }
+const sword = new THREE.Group(); sword.position.set(0,-.46,.04); armR.add(sword);
+box(.06,.15,.06, leather, 0,-.03,0, sword);
+box(.3,.045,.08, gold, 0,.06,0, sword);
+const bladeMat = new THREE.MeshStandardMaterial({color:0x8b9284, metalness:.85, roughness:.3, emissive:0xffb52e, emissiveIntensity:.18});
+const blade = box(.15,.78,.025, bladeMat, 0,.48,0, sword);
+const swordLight = new THREE.PointLight(0xffc24d, 0, 6, 1.8); swordLight.position.set(0,.6,0); sword.add(swordLight);
+// 左臂 + 圆盾
+const armL = new THREE.Group(); armL.position.set(-.36,.72,0); heroBody.add(armL);
+{ const up=new THREE.Mesh(new THREE.CylinderGeometry(.07,.065,.22,8), furMat); up.position.set(0,-.1,0); armL.add(up);
+  const fore=new THREE.Mesh(new THREE.CylinderGeometry(.075,.085,.2,8), steel); fore.position.set(0,-.29,0); fore.castShadow=true; armL.add(fore);
+  sph(.075, furLight, 0, -.42, .02, armL); }
+const shield = new THREE.Group(); shield.position.set(-.1,-.44,.08); armL.add(shield);
+const shieldMesh = new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,.06,24), steel);
+shieldMesh.rotation.x = Math.PI/2; shieldMesh.castShadow=true; shield.add(shieldMesh);
+const shieldRim = new THREE.Mesh(new THREE.TorusGeometry(.3,.025,8,28), gold); shieldRim.position.z=.02; shield.add(shieldRim);
+const shieldBoss = new THREE.Mesh(new THREE.SphereGeometry(.09,12,10), gold); shieldBoss.position.z=.06; shield.add(shieldBoss);
+// 毛尾巴（多节摆动）
+const catTailSegs=[]; let ctParent=heroBody, ctx2=0, cty=.42, ctz=-.3;
+for(let i=0;i<4;i++){ const g=new THREE.Group(); g.position.set(ctx2,cty,ctz); ctParent.add(g); const s=new THREE.Mesh(new THREE.SphereGeometry(.085-i*.012,10,8), furMat); s.castShadow=true; g.add(s); catTailSegs.push(g); ctParent=g; ctx2=0; cty=.05; ctz=-.13; }
+hero.position.set(0,0,10);
+hero.scale.setScalar(1.15);
+
+// —— 真模型（混元3D 猫骑士，models/cat.glb）：加载成功换上，失败用几何猫兜底 ——
+const modelPivot = new THREE.Group(); heroBody.add(modelPivot);
+const shieldBubble = new THREE.Mesh(new THREE.SphereGeometry(.95, 20, 14),
+  new THREE.MeshStandardMaterial({color:0x8fc4ff, transparent:true, opacity:0, roughness:.15, metalness:0, emissive:0x2a5a9e, emissiveIntensity:.7, depthWrite:false}));
+shieldBubble.position.set(0,.78,.12); shieldBubble.scale.set(1,1.05,.82); heroBody.add(shieldBubble);
+let catModel = null;
+const CAT_B64 = '%%CAT_B64%%'; // 单文件版组装时注入；为空则加载同目录 models/cat.glb
+const catSrc = CAT_B64.length > 100
+  ? URL.createObjectURL(new Blob([Uint8Array.from(atob(CAT_B64), c=>c.charCodeAt(0))], {type:'model/gltf-binary'}))
+  : 'models/cat.glb';
+new GLTFLoader().load(catSrc, (gltf)=>{
+  catModel = gltf.scene;
+  catModel.scale.setScalar(2.5);
+  catModel.traverse(o=>{ if(o.isMesh){ o.castShadow=true; const ms=Array.isArray(o.material)?o.material:[o.material]; ms.forEach(m=>{ if(m && m.isMeshStandardMaterial) m.envMapIntensity=.7; }); } });
+  modelPivot.add(catModel);
+  heroBody.children.forEach(c=>{ if(c!==modelPivot && c!==shieldBubble) c.visible=false; });
+}, undefined, ()=>{ catModel = null; });
+
+/* ================= 雾原黑龙：深灰黑 · 满身尖刺 · 胸口火核 ================= */
+const dragonMat = new THREE.MeshStandardMaterial({color:0x3b4148, roughness:.72, metalness:.2});
+const bellyMat2 = new THREE.MeshStandardMaterial({color:0x596066, roughness:.8});
+const spikeMat = new THREE.MeshStandardMaterial({color:0x1d2023, roughness:.55});
+const wingMat = new THREE.MeshStandardMaterial({color:0x24262a, roughness:.9, side:THREE.DoubleSide, transparent:true, opacity:.97});
+const coreMat = new THREE.MeshStandardMaterial({color:0x2a1503, emissive:0xff6a00, emissiveIntensity:.9, roughness:.4});
+
+const dragon = new THREE.Group(); scene.add(dragon);
+const dBody = new THREE.Group(); dragon.add(dBody);
+function dpart(geo, mat, x,y,z, parent=dBody){ const m=new THREE.Mesh(geo,mat); m.position.set(x,y,z); m.castShadow=true; parent.add(m); return m; }
+const bodyMesh = dpart(new THREE.SphereGeometry(2.0, 22, 18), dragonMat, 0, 2.5, 1.0); bodyMesh.scale.set(1.05,1,1.55);
+const bellyMesh = dpart(new THREE.SphereGeometry(1.8, 20, 16), bellyMat2, 0, 2.2, .3); bellyMesh.scale.set(.9,.88,1.3);
+// 胸口火核（蓄力/喷火时变亮）
+const core = dpart(new THREE.SphereGeometry(.37, 14, 12), coreMat, 0, 2.1, -1.8); core.scale.set(1,1.2,.55);
+const coreLight = new THREE.PointLight(0xff6a00, 6, 13, 1.7); coreLight.position.set(0,2.1,-1.7); dBody.add(coreLight);
+// 背刺：从头到尾一整排
+for(let i=0;i<9;i++){ const z=-.9+i*.62, s=dpart(new THREE.ConeGeometry(.2, .95-Math.abs(i-4)*.07, 5), spikeMat, 0, 4.35-Math.pow(Math.abs(i-3.5),1.6)*.14, z); s.rotation.x=-.3; }
+// 脖子（4 节蛇形）+ 头
+const neck = new THREE.Group(); neck.position.set(0,3.5,-1.5); dBody.add(neck);
+[[1.02,0,.25,-.4],[.92,0,.75,-1.0],[.82,0,1.3,-1.65],[.72,0,1.85,-2.3]].forEach(([r,x,y,z])=>{
+  dpart(new THREE.SphereGeometry(r,14,12), dragonMat, x,y,z, neck);
+  const sp=dpart(new THREE.ConeGeometry(.16,.7,5), spikeMat, x, y+r*.85, z+.25, neck); sp.rotation.x=-.5;
+});
+const headPivot = new THREE.Group(); headPivot.position.set(0,2.4,-3.05); headPivot.scale.setScalar(1.12); neck.add(headPivot);
+const skull = dpart(new THREE.SphereGeometry(.98,18,14), dragonMat, 0,0,0, headPivot); skull.scale.set(.92,.82,1.3);
+const snout = dpart(new THREE.BoxGeometry(.85,.5,1.35), dragonMat, 0,-.2,-1.2, headPivot);
+const jaw = dpart(new THREE.BoxGeometry(.72,.16,1.15), bellyMat2, 0,-.55,-1.05, headPivot);
+dpart(new THREE.BoxGeometry(1.0,.22,.7), spikeMat, 0,.42,-.15, headPivot); // 眉脊
+for(const sx of [-1,1]){
+  const horn = dpart(new THREE.ConeGeometry(.16,1.6,6), spikeMat, sx*.55,.55,.5, headPivot); horn.rotation.x=1.15; horn.rotation.z=-sx*.3;
+  const cheek = dpart(new THREE.ConeGeometry(.1,.6,5), spikeMat, sx*.85,-.05,-.3, headPivot); cheek.rotation.z=sx*1.5;
+  for(let tI=0;tI<4;tI++){ const tooth=dpart(new THREE.ConeGeometry(.06,.26,4), new THREE.MeshStandardMaterial({color:0xd8d2c0, roughness:.4}), sx*(.3-tI*.02),-.48,-.7-tI*.26, headPivot); tooth.rotation.x=Math.PI; }
+  dpart(new THREE.SphereGeometry(.13,10,8), new THREE.MeshBasicMaterial({color:0xffa018}), sx*.44,.18,-.8, headPivot); // 琥珀眼
+}
+for(let ci=0;ci<5;ci++){ const crown=dpart(new THREE.ConeGeometry(.11,.65-ci*.06,5), spikeMat, (ci-2)*.2, .8, .15+Math.abs(ci-2)*.08, headPivot); crown.rotation.x=-.35; }
+const mouthPos = new THREE.Object3D(); mouthPos.position.set(0,-.35,-2.0); headPivot.add(mouthPos);
+const mouthLight = new THREE.PointLight(0xff4400, 0, 16, 1.6); mouthLight.position.copy(mouthPos.position); headPivot.add(mouthLight);
+// 翼：更大，带指骨
+function makeWing(side){
+  const w = new THREE.Group(); w.position.set(side*1.6, 4.2, .7); dBody.add(w);
+  const shape = new THREE.Shape();
+  shape.moveTo(0,0); shape.lineTo(side*3.8,1.9); shape.lineTo(side*7.6,2.6); shape.lineTo(side*6.4,.3); shape.lineTo(side*7.3,-1.5); shape.lineTo(side*4.4,-1.0); shape.lineTo(side*2.6,-2.3); shape.lineTo(0,-.8); shape.lineTo(0,0);
+  const membrane = new THREE.Mesh(new THREE.ShapeGeometry(shape), wingMat); membrane.castShadow=true; w.add(membrane);
+  const bone = new THREE.Mesh(new THREE.CylinderGeometry(.09,.05,8.2,6), dragonMat);
+  bone.position.set(side*3.7,1.4,0); bone.rotation.z = side*1.24; w.add(bone);
+  const bone2 = new THREE.Mesh(new THREE.CylinderGeometry(.06,.04,5.6,6), dragonMat);
+  bone2.position.set(side*5.6,.4,.01); bone2.rotation.z = side*1.75; w.add(bone2);
+  return w;
+}
+const wingL = makeWing(-1), wingR = makeWing(1);
+// 腿 + 爪
+for(const sx of [-1,1]) for(const sz of [-1,1]){
+  dpart(new THREE.CylinderGeometry(.44,.32,2.2,8), dragonMat, sx*1.4, 1.1, .9+sz*1.45);
+  for(let c=0;c<3;c++){ const claw=dpart(new THREE.ConeGeometry(.09,.5,5), spikeMat, sx*1.4+(c-1)*.3, .12, (.9+sz*1.45)-.55); claw.rotation.x=-1.9; }
+}
+// 尾巴（7 节带刺）
+const tailSegs = [];
+let tailParent = dBody, tx=0, ty=2.6, tz=4.0;
+for(let i=0;i<7;i++){
+  const g = new THREE.Group(); g.position.set(tx, ty, tz); tailParent.add(g);
+  const s = new THREE.Mesh(new THREE.SphereGeometry(.8-i*.1, 12, 10), dragonMat); s.castShadow=true; g.add(s);
+  const sp = new THREE.Mesh(new THREE.ConeGeometry(.13,.5,5), spikeMat); sp.position.set(0,.6,0); sp.rotation.x=-.3; g.add(sp);
+  tailSegs.push(g); tailParent = g; tx=0; ty=-.06; tz=1.0;
+}
+const tailTip = dpart(new THREE.ConeGeometry(.26,1.3,4), spikeMat, 0,0,1.1, tailParent); tailTip.rotation.x = Math.PI/2.3; tailTip.scale.z=.4;
+dragon.position.set(0,0,-13);
+dragon.rotation.y = Math.PI;
+dragon.scale.setScalar(1.12);
+
+// 几何材质环境反射强度（雾天别太亮）
+scene.traverse(o=>{ if(o.isMesh){ const ms=Array.isArray(o.material)?o.material:[o.material]; ms.forEach(m=>{ if(m && m.isMeshStandardMaterial) m.envMapIntensity=.45; }); } });
+
+/* ================= BGM：用户提供视频的原片音轨（内嵌）+ 合成备用 ================= */
+let AC=null, bgmOn=true, master=null, musicTimer=null, nextBarTime=0, barIdx=0, useSynth=false;
+const bgmAudio = new Audio();
+bgmAudio.loop = true; bgmAudio.volume = .85; bgmAudio.preload='auto';
+bgmAudio.addEventListener('error', ()=>{ useSynth=true; });
+try{ bgmAudio.src = 'data:audio/mpeg;base64,' + window.__BGM_B64; }catch(e){ useSynth=true; }
+document.getElementById('endPanel').style.backgroundImage = 'url(data:image/jpeg;base64,'+window.__POSTER_B64+')';
+
+const BPM=88, BAR=4*60/BPM;
+const CHORDS=[ {root:38, tones:[50,53,57,62]}, {root:46, tones:[46,50,53,58]}, {root:41, tones:[48,53,57,60]}, {root:36, tones:[48,52,55,59]} ];
+const MELODY=[62,65,69,65, 62,60,62,-1, 65,69,72,69, 65,62,60,-1];
+const mf=m=>440*Math.pow(2,(m-69)/12);
+function initAudio(){
+  if(bgmOn){ bgmAudio.play().catch(()=>{ useSynth=true; }); }
+  if(AC){ if(AC.state==='suspended') AC.resume(); return; }
+  try{
+    AC = new (window.AudioContext||window.webkitAudioContext)();
+    master = AC.createGain(); master.gain.value=.5; master.connect(AC.destination);
+    nextBarTime = AC.currentTime + .1;
+    musicTimer = setInterval(scheduleMusic, 120);
+  }catch(e){}
+}
+function env(g,t,a,peak,dur){ g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(peak,t+a); g.gain.exponentialRampToValueAtTime(.0001,t+dur); }
+function taiko(t,vol=1){
+  const o=AC.createOscillator(), g=AC.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(130,t); o.frequency.exponentialRampToValueAtTime(38,t+.28);
+  env(g,t,.005,.9*vol,.4); o.connect(g).connect(master); o.start(t); o.stop(t+.45);
+}
+function noiseHit(t,dur,freq,vol){
+  const len=AC.sampleRate*dur, buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  const s=AC.createBufferSource(); s.buffer=buf;
+  const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=freq;
+  const g=AC.createGain(); g.gain.value=vol;
+  s.connect(f).connect(g).connect(master); s.start(t);
+}
+function tone(t,midi,type,dur,vol,lp=1200){
+  const o=AC.createOscillator(), o2=AC.createOscillator(), g=AC.createGain(), f=AC.createBiquadFilter();
+  o.type=type; o.frequency.value=mf(midi); o2.type=type; o2.frequency.value=mf(midi)*1.005;
+  f.type='lowpass'; f.frequency.value=lp;
+  env(g,t,.08,vol,dur);
+  o.connect(f); o2.connect(f); f.connect(g).connect(master);
+  o.start(t); o2.start(t); o.stop(t+dur); o2.stop(t+dur);
+}
+function scheduleMusic(){
+  if(!AC || !bgmOn || !useSynth) { if(AC) nextBarTime=Math.max(nextBarTime, AC.currentTime+.1); return; }
+  while(nextBarTime < AC.currentTime + .35){
+    const t=nextBarTime, ch=CHORDS[barIdx%4];
+    taiko(t,1); taiko(t+BAR*.5,.55); taiko(t+BAR*.625,.4); taiko(t+BAR*.75,.8); noiseHit(t,.12,900,.12);
+    for(let i=0;i<8;i++){ const tt=t+i*BAR/8; tone(tt, i%2? ch.root+7 : ch.root, 'sawtooth', BAR/8*.9, .10, 500); }
+    ch.tones.forEach(n=>{ tone(t,n,'sawtooth',BAR,.045,750); tone(t,n+12,'triangle',BAR,.03,1200); });
+    if(barIdx%2===0){ const base=(barIdx/2)%2; for(let i=0;i<4;i++){ const n=MELODY[base*8+i*2]; if(n>0) tone(t+i*BAR/4, n, 'sawtooth', BAR/4*1.7, .075, 1500); } }
+    barIdx++; nextBarTime+=BAR;
+  }
+}
+function sfxWhoosh(){ if(!AC)return; noiseHit(AC.currentTime,.16,2600,.25); }
+function sfxClang(){ if(!AC)return; const t=AC.currentTime; [3200,4700,6100].forEach((fr,i)=>{ const o=AC.createOscillator(),g=AC.createGain(); o.type='square'; o.frequency.value=fr; env(g,t,.002,.10/(i+1),.22); o.connect(g).connect(master); o.start(t); o.stop(t+.25); }); noiseHit(t,.08,5000,.2); }
+function sfxRoar(){ if(!AC)return; const t=AC.currentTime; const o=AC.createOscillator(),g=AC.createGain(),f=AC.createBiquadFilter(); o.type='sawtooth'; o.frequency.setValueAtTime(160,t); o.frequency.exponentialRampToValueAtTime(55,t+.9); f.type='lowpass'; f.frequency.value=700; env(g,t,.06,.5,1.0); o.connect(f).connect(g).connect(master); o.start(t); o.stop(t+1.05); noiseHit(t,.9,500,.3); }
+function sfxFireBurst(){ if(!AC)return; noiseHit(AC.currentTime,.5,1400,.35); }
+function sfxHurt(){ if(!AC)return; taiko(AC.currentTime,.7); }
+addEventListener('pointerdown', initAudio);
+addEventListener('keydown', initAudio);
+const bgmBtn=document.getElementById('bgmBtn');
+bgmBtn.addEventListener('click', e=>{ e.stopPropagation(); bgmOn=!bgmOn; bgmBtn.textContent = bgmOn?'🎵 原片BGM：开':'🔇 原片BGM：关'; if(bgmOn){ initAudio(); } else { bgmAudio.pause(); } });
+
+/* ================= 战斗状态 ================= */
+const $=id=>document.getElementById(id);
+let heroHp=100, heroSt=100, dragonHp=1000, dragonMax=1000;
+let gameOver=false, startedAt=performance.now(), hitCount=0;
+let atkTimer=0, atkCombo=0, atkWindow=0, rollTimer=0, rollDir=new THREE.Vector3(), hurtCd=0;
+let blocking=false, camShake=0, glowLevel=.2, rollAxis='x', rollSign=1;
+function camBasis(){
+  const f = new THREE.Vector3(); camera.getWorldDirection(f); f.y = 0;
+  if(f.lengthSq() < .001) f.set(0,0,-1); f.normalize();
+  const r = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0,1,0));
+  return { f, r };
+}
+const keys={};
+const ARROW2WASD = { ArrowUp:'KeyW', ArrowDown:'KeyS', ArrowLeft:'KeyA', ArrowRight:'KeyD' };
+addEventListener('keydown', e=>{ keys[e.code]=true; if(ARROW2WASD[e.code]){ keys[ARROW2WASD[e.code]]=true; e.preventDefault(); } if(e.code==='Space'){ e.preventDefault(); tryRoll(); } if(e.code==='KeyJ') tryAttack(); });
+addEventListener('keyup', e=>{ keys[e.code]=false; if(ARROW2WASD[e.code]) keys[ARROW2WASD[e.code]]=false; });
+let mouseBlock=false;
+renderer.domElement.addEventListener('pointerdown', e=>{ if(e.button===0) tryAttack(); if(e.button===2) mouseBlock=true; });
+addEventListener('pointerup', e=>{ if(e.button===2) mouseBlock=false; });
+addEventListener('contextmenu', e=>e.preventDefault());
+$('tAtk').addEventListener('touchstart', e=>{e.preventDefault(); initAudio(); tryAttack();});
+$('tRoll').addEventListener('touchstart', e=>{e.preventDefault(); tryRoll();});
+let touchBlock=false;
+$('tBlk').addEventListener('touchstart', e=>{e.preventDefault(); touchBlock=true;});
+$('tBlk').addEventListener('touchend', ()=>touchBlock=false);
+
+const sparks = makePoints(300, .2, 0xffcc55, 1);
+const sparkData=[]; { const p=sparks.geometry.attributes.position.array; for(let i=0;i<300;i++){ p[i*3+1]=-99; sparkData.push({v:new THREE.Vector3(), life:0}); } }
+function burst(pos, n, color, spread=3, up=3){
+  sparks.material.color.set(color);
+  const p=sparks.geometry.attributes.position.array; let c=0;
+  for(let i=0;i<300 && c<n;i++){ if(sparkData[i].life<=0){ sparkData[i].life=.4+Math.random()*.3; p[i*3]=pos.x; p[i*3+1]=pos.y; p[i*3+2]=pos.z; sparkData[i].v.set((Math.random()-.5)*spread, Math.random()*up, (Math.random()-.5)*spread); c++; } }
+}
+const firePts = makePoints(500, .55, 0xff6a00, .85);
+const fireData=[]; { const p=firePts.geometry.attributes.position.array; for(let i=0;i<500;i++){ p[i*3+1]=-99; fireData.push({v:new THREE.Vector3(), life:0}); } }
+const fireballs=[];
+const fireballGeo=new THREE.SphereGeometry(.42,12,10);
+const fireballMat=new THREE.MeshBasicMaterial({color:0xff7a1a});
+function shootFireball(from, to){
+  const m=new THREE.Mesh(fireballGeo, fireballMat); m.position.copy(from);
+  const light=new THREE.PointLight(0xff5500, 20, 9, 1.6); m.add(light); scene.add(m);
+  fireballs.push({m, v: to.clone().sub(from).normalize().multiplyScalar(17), life:4});
+  sfxFireBurst();
+}
+function spawnDmg(worldPos, text, color='#ffd76a', size=26){
+  const v=worldPos.clone().project(camera);
+  const el=document.createElement('div'); el.className='dmg'; el.textContent=text;
+  el.style.left=((v.x*.5+.5)*innerWidth + (Math.random()*40-20))+'px';
+  el.style.top=((-v.y*.5+.5)*innerHeight)+'px';
+  el.style.color=color; el.style.fontSize=size+'px';
+  document.body.appendChild(el); setTimeout(()=>el.remove(), 820);
+}
+function flashHit(){ const f=$('flash'); f.style.opacity=.9; setTimeout(()=>f.style.opacity=0, 90); }
+
+function heroTakeDamage(dmg, opts={}){
+  if(gameOver || rollTimer>0 || hurtCd>0) return;
+  let final=dmg;
+  if(blocking && heroSt>0){
+    final = Math.round(dmg*.18); heroSt=Math.max(0, heroSt- dmg*.9);
+    sfxClang(); burst(hero.position.clone().add(new THREE.Vector3(0,1.1,0)), 14, 0xaad4ff, 3, 2);
+    camShake=Math.max(camShake,.12);
+  } else { flashHit(); sfxHurt(); camShake=Math.max(camShake,.3); }
+  heroHp=Math.max(0, heroHp-final); hurtCd=.35;
+  spawnDmg(hero.position.clone().add(new THREE.Vector3(0,1.9,0)), '-'+final, '#ff6a5e', 22);
+  if(heroHp<=0) endGame(false);
+}
+function dragonTakeDamage(dmg){
+  if(gameOver) return;
+  dragonHp=Math.max(0, dragonHp-dmg); hitCount++;
+  const headWorld=new THREE.Vector3(); headPivot.getWorldPosition(headWorld);
+  burst(headWorld, 10, 0xffcc55, 3.5, 2.5); sfxClang();
+  spawnDmg(headWorld, dmg, atkCombo>=3?'#ff9a2e':'#ffd76a', atkCombo>=3?34:25);
+  if(atkCombo>=2){ const c=$('combo'); c.textContent=(atkCombo+1)+' 连斩 · 圣光!'; c.style.opacity=1; setTimeout(()=>c.style.opacity=0, 650); }
+  if(dragonHp<=0) endGame(true);
+}
+function tryAttack(){
+  if(gameOver || atkTimer>0 || rollTimer>0) return;
+  initAudio();
+  atkCombo = atkWindow>0 ? (atkCombo+1)%3 : 0; atkWindow=.9;
+  atkTimer=.32; sfxWhoosh();
+  glowLevel = atkCombo===2 ? 2.6 : .9;
+  setTimeout(()=>{
+    if(gameOver) return;
+    const dHero = hero.position.distanceTo(dragon.position);
+    const headWorld=new THREE.Vector3(); headPivot.getWorldPosition(headWorld);
+    const dHead = Math.hypot(hero.position.x-headWorld.x, hero.position.z-headWorld.z);
+    if(dHero<8.2 || dHead<4.6){
+      let dmg = 9 + Math.round(Math.random()*5) + (atkCombo===2?9:0);
+      if(dHead<4.6) dmg = Math.round(dmg*1.35);
+      dragonTakeDamage(dmg);
+      if(dragonState==='breath' && Math.random()<.35){ setDragonState('strafe', .8); }
+    }
+  }, 130);
+}
+function tryRoll(){
+  if(gameOver || rollTimer>0 || heroSt<18) return;
+  heroSt-=18; rollTimer=.42;
+  const { f: rF, r: rR } = camBasis();
+  rollDir.copy(rF).multiplyScalar((keys.KeyW?1:0)-(keys.KeyS?1:0)).addScaledVector(rR, (keys.KeyD?1:0)-(keys.KeyA?1:0));
+  if(rollDir.lengthSq()===0){ rollDir.copy(hero.position).sub(dragon.position).setY(0).normalize(); }
+  else rollDir.normalize();
+  // 按翻滚方向相对朝向决定滚法：前/后 = 前滚翻（绕 X），左/右 = 侧滚（绕 Z）
+  const inv = rollDir.clone().applyAxisAngle(new THREE.Vector3(0,1,0), -hero.rotation.y);
+  if(Math.abs(inv.z) >= Math.abs(inv.x)){ rollAxis='x'; rollSign = inv.z>=0? 1 : -1; }
+  else { rollAxis='z'; rollSign = inv.x>=0? -1 : 1; }
+  burst(hero.position.clone().add(new THREE.Vector3(0,.15,0)), 8, 0xb9c49a, 2.5, 1.5);
+  sfxWhoosh();
+}
+
+/* ================= 恶龙 AI：开局即战 ================= */
+let dragonState='strafe', stateTime=1.2, breathOn=false, flyHeight=0, diveTarget=null, roarDone=false;
+const phase = ()=> dragonHp>700?1 : dragonHp>380?2 : 3;
+function setDragonState(s, t){ dragonState=s; stateTime=t; breathOn = (s==='breath'); if(s==='breath') sfxFireBurst(); if(s==='roar'){ sfxRoar(); camShake=Math.max(camShake,.5);} }
+function dragonFaceHero(dt, speed=3){
+  const f = hero.position.clone().sub(dragon.position).setY(0).normalize();
+  const target = Math.atan2(-f.x, -f.z);
+  let diff = target - dragon.rotation.y;
+  while(diff>Math.PI) diff-=Math.PI*2; while(diff<-Math.PI) diff+=Math.PI*2;
+  dragon.rotation.y += THREE.MathUtils.clamp(diff, -speed*dt, speed*dt);
+}
+function dragonForward(){ return new THREE.Vector3(-Math.sin(dragon.rotation.y), 0, -Math.cos(dragon.rotation.y)); }
+
+function updateDragon(dt, t){
+  if(gameOver) return;
+  stateTime-=dt;
+  const dist = hero.position.distanceTo(dragon.position);
+  const p = phase();
+  const speedMul = p===1?1 : p===2?1.3 : 1.6;
+  const flapF = (dragonState==='fly'||dragonState==='dive')? 9 : 2.2;
+  wingL.rotation.z = -0.22 + Math.sin(t*flapF)*.5;
+  wingR.rotation.z =  0.22 - Math.sin(t*flapF)*.5;
+  tailSegs.forEach((s,i)=>{ s.rotation.y = Math.sin(t*2.0 - i*.55)*.2; });
+  mouthLight.intensity = breathOn? 60 : (dragonState==='charge'? 26+Math.sin(t*20)*8 : 0);
+  coreMat.emissiveIntensity = breathOn? 3.2 : dragonState==='charge'? 2.2+Math.sin(t*16)*.8 : .9+Math.sin(t*2.2)*.15;
+  coreLight.intensity = coreMat.emissiveIntensity*5;
+
+  switch(dragonState){
+    case 'strafe': {
+      dragonFaceHero(dt, 2.4);
+      const dir = hero.position.clone().sub(dragon.position).setY(0).normalize();
+      if(dist>9) dragon.position.addScaledVector(dir, dt*2.4*speedMul);
+      else if(dist<5.6) dragon.position.addScaledVector(dir, -dt*1.4);
+      else dragon.position.addScaledVector(new THREE.Vector3(dir.z,0,-dir.x), dt*1.1*Math.sin(t*.7));
+      dragon.position.y = 0;
+      headPivot.rotation.x = Math.sin(t*1.4)*.06;
+      if(stateTime<=0){
+        if(!roarDone){ roarDone=true; setDragonState('roar', 1.0); }
+        else if(dist<7.5) setDragonState(Math.random()<.5?'bite':'breath', dist<7.5&&Math.random()<.5? .7 : 2.6);
+        else if(dist<14) setDragonState(Math.random()<.55?'breath':'charge', Math.random()<.55?2.6:.7);
+        else setDragonState(Math.random()<.6?'charge':'strafe', Math.random()<.6?.7:.8);
+        if(Math.random()<.22 && dist<16) setDragonState('fly', 2.2);
+      }
+      break; }
+    case 'roar': headPivot.rotation.x = -.35+Math.sin(t*30)*.03; if(stateTime<=0) setDragonState('strafe', .6); break;
+    case 'charge':
+      dragonFaceHero(dt, 3.2); headPivot.rotation.x=.18;
+      if(stateTime<=0){
+        const mouth=new THREE.Vector3(); mouthPos.getWorldPosition(mouth);
+        for(let i=0;i<3;i++) setTimeout(()=>{ if(!gameOver) shootFireball(mouth.clone(), hero.position.clone().add(new THREE.Vector3(0,.8,0))); }, i*260);
+        setDragonState('strafe', 1.1/speedMul);
+      }
+      break;
+    case 'breath': {
+      dragonFaceHero(dt, .85);
+      if(dist>6.5) dragon.position.addScaledVector(dragonForward(), dt*1.2);
+      headPivot.rotation.x = .32 + Math.sin(t*1.8)*.14;
+      const mouth=new THREE.Vector3(); mouthPos.getWorldPosition(mouth);
+      const fwd=dragonForward();
+      const pArr=firePts.geometry.attributes.position.array;
+      let spawned=0;
+      for(let i=0;i<500 && spawned<7;i++){ if(fireData[i].life<=0){
+        fireData[i].life=.5+Math.random()*.35;
+        pArr[i*3]=mouth.x; pArr[i*3+1]=mouth.y; pArr[i*3+2]=mouth.z;
+        fireData[i].v.copy(fwd).multiplyScalar(15+Math.random()*7);
+        fireData[i].v.x+=(Math.random()-.5)*3.4; fireData[i].v.y+=(Math.random()-.5)*2.2 - .6; fireData[i].v.z+=(Math.random()-.5)*3.4;
+        spawned++;
+      }}
+      const toHero=hero.position.clone().sub(dragon.position).setY(0);
+      const angle=toHero.clone().normalize().dot(fwd);
+      if(toHero.length()<14.5 && angle>.72 && hurtCd<=0) heroTakeDamage(8);
+      if(stateTime<=0) setDragonState('strafe', .9/speedMul);
+      break; }
+    case 'bite':
+      dragonFaceHero(dt, 4);
+      dragon.position.addScaledVector(dragonForward(), dt*10);
+      if(dist<5){ heroTakeDamage(16); setDragonState('strafe', 1.0); }
+      if(stateTime<=0) setDragonState('strafe', .8);
+      break;
+    case 'fly':
+      flyHeight = Math.min(flyHeight + dt*4, 9);
+      dragon.position.y = flyHeight;
+      dragon.position.x += Math.sin(t*.8)*dt*4; dragonFaceHero(dt,1.6);
+      if(stateTime<=0){ diveTarget=hero.position.clone(); setDragonState('dive', 1.15); sfxRoar(); }
+      break;
+    case 'dive': {
+      const target = diveTarget.clone(); target.y=0;
+      const dirv = target.clone().sub(dragon.position); const dl=dirv.length();
+      dragon.position.addScaledVector(dirv.normalize(), dt*22);
+      dragon.position.y = Math.max(0, dragon.position.y - dt*11);
+      if(dragon.position.y<=0.1 && dl<4.5){
+        camShake=.55; sfxHurt(); burst(hero.position.clone().add(new THREE.Vector3(0,.4,0)), 22, 0x9aa48c, 5, 4);
+        if(hero.position.distanceTo(dragon.position)<5.5) heroTakeDamage(20);
+        flyHeight=0; setDragonState('strafe', 1.3);
+      }
+      if(stateTime<=0){ flyHeight=0; dragon.position.y=0; setDragonState('strafe', 1.0); }
+      break; }
+  }
+  const behind = hero.position.clone().sub(dragon.position).setY(0).normalize().dot(dragonForward());
+  if(dist<5.5 && behind<-.45 && dragonState==='strafe'){ heroTakeDamage(14); burst(hero.position.clone().add(new THREE.Vector3(0,.8,0)), 12, 0xffaa55, 3, 2); setDragonState('strafe', .7); }
+  $('bossPhase').textContent = p===1?'黑龙苏醒 · 胸口火核燃起' : p===2?'⚠ 黑龙狂怒 · 攻速提升 ⚠' : '💀 垂死狂暴 · 小心俯冲 💀';
+}
+
+/* ================= 主循环 ================= */
+const clock = new THREE.Clock();
+const camTargetPos = new THREE.Vector3();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), .05);
+  const t = clock.elapsedTime;
+  if(atkTimer>0) atkTimer-=dt; if(atkWindow>0) atkWindow-=dt; else atkCombo=0;
+  if(rollTimer>0) rollTimer-=dt; if(hurtCd>0) hurtCd-=dt;
+  glowLevel = Math.max(.18, glowLevel - dt*2.4);
+  bladeMat.emissiveIntensity = glowLevel + Math.sin(t*3)*0.06;
+  swordLight.intensity = glowLevel*7;
+
+  blocking = (keys.KeyK || mouseBlock || touchBlock) && rollTimer<=0 && atkTimer<=0;
+  const sprint = (keys.ShiftLeft || keys.ShiftRight) && !blocking;
+  const { f: camF, r: camR } = camBasis();
+  let mv = camF.clone().multiplyScalar((keys.KeyW?1:0)-(keys.KeyS?1:0)).addScaledVector(camR, (keys.KeyD?1:0)-(keys.KeyA?1:0));
+  const moving = mv.lengthSq()>0;
+  if(moving) mv.normalize();
+  let speed = blocking? 2.0 : sprint? 7.6 : 4.8;
+  if(rollTimer>0){
+    const rp = 1 - rollTimer/.42; // 0->1
+    hero.position.addScaledVector(rollDir, dt*10);
+    hero.position.y = Math.sin(rp*Math.PI)*.16; // 小跳弧线，翻滚时头不擦地
+    heroRoll.rotation[rollAxis] = rp*Math.PI*2*rollSign;
+    const curl = Math.sin(rp*Math.PI); // 中段蜷成一团
+    heroBody.scale.set(1+.12*curl, 1-.22*curl, 1+.12*curl);
+  }
+  else { heroRoll.rotation.set(0,0,0); heroBody.scale.set(1,1,1); hero.position.y=0; if(!gameOver) heroBody.rotation.x=0; if(moving && atkTimer<=0) hero.position.addScaledVector(mv, dt*speed); }
+  const hd = Math.hypot(hero.position.x, hero.position.z);
+  if(hd>20){ hero.position.x*=20/hd; hero.position.z*=20/hd; }
+  const dd = Math.hypot(dragon.position.x, dragon.position.z);
+  if(dd>19 && dragonState!=='fly' && dragonState!=='dive'){ dragon.position.x*=19/dd; dragon.position.z*=19/dd; }
+  if(!gameOver){
+    const faceVec = (moving && atkTimer<=0 && rollTimer<=0) ? mv : dragon.position.clone().sub(hero.position).setY(0);
+    if(faceVec.lengthSq()>0){ const ty=Math.atan2(faceVec.x, faceVec.z); let df=ty-hero.rotation.y; while(df>Math.PI)df-=Math.PI*2; while(df<-Math.PI)df+=Math.PI*2; hero.rotation.y += df*Math.min(1, dt*14); }
+  }
+  const bob = moving && rollTimer<=0 ? Math.abs(Math.sin(t*(sprint?12:9)))*.05 : Math.sin(t*2.2)*.015;
+  heroBody.position.y = -.58 + bob;
+  headG.rotation.z = Math.sin(t*1.8)*.03;
+  headG.rotation.x = rollTimer>0? .55*Math.sin((1-rollTimer/.42)*Math.PI) : (blocking? .12 : Math.sin(t*1.5)*.02);
+  catTailSegs.forEach((s,i)=>{ s.rotation.y = Math.sin(t*2.6 - i*.7)*.35; s.rotation.x = -.15 + Math.sin(t*2 - i*.5)*.12; });
+  if(atkTimer>0){ const k=1-atkTimer/.32; const swing = atkCombo===0? [-.4,-2.4] : atkCombo===1? [.9,-1.8] : [-.6,-2.9]; armR.rotation.x = THREE.MathUtils.lerp(swing[0], swing[1], Math.sin(k*Math.PI)); armR.rotation.z = atkCombo===1? Math.sin(k*Math.PI)*.9 : 0; }
+  else { armR.rotation.x = moving? Math.sin(t*9)*.25 : Math.sin(t*2)*.04; armR.rotation.z=0; }
+  if(rollTimer>0){ armR.rotation.x=-.7; armR.rotation.z=.3; armL.rotation.x=-.7; }
+  if(catModel){
+    const kk = atkTimer>0 ? Math.sin((1-atkTimer/.32)*Math.PI) : 0;
+    modelPivot.rotation.x = kk * (atkCombo===1? -.5 : .62);
+    modelPivot.rotation.z = atkTimer>0 ? (atkCombo===1? kk*.3 : -kk*.18) : (moving? Math.sin(t*9)*.045 : Math.sin(t*2)*.018);
+    modelPivot.position.z = kk*.22;
+    modelPivot.position.y = blocking? -.07 : 0;
+  }
+  const targetOp = (blocking && catModel)? .3 : 0;
+  shieldBubble.material.opacity += (targetOp - shieldBubble.material.opacity)*Math.min(1, dt*12);
+  if(blocking){ armL.rotation.x=-1.1; armL.rotation.y=.3; shield.position.z=.3; }
+  else { armL.rotation.x = moving? -Math.sin(t*9)*.25 : 0; armL.rotation.y=0; shield.position.z=.08; }
+  if(!blocking && rollTimer<=0) heroSt=Math.min(100, heroSt + dt*(moving?10:18));
+  if(blocking) heroSt=Math.max(0, heroSt - dt*4);
+  // 金色星火环绕猫骑士（跟随 + 旋转升腾）
+  sparkles.position.copy(hero.position);
+  sparkles.rotation.y = t*.7;
+  for(let i=0;i<130;i++){ const sd=sparkSeed[i]; sparkPos[i*3+1] = ((sd.y + t*sd.s*.35) % 1.6); }
+  sparkles.geometry.attributes.position.needsUpdate=true;
+
+  updateDragon(dt, t);
+
+  for(let i=fireballs.length-1;i>=0;i--){ const f=fireballs[i]; f.m.position.addScaledVector(f.v, dt); f.life-=dt;
+    if(f.m.position.distanceTo(hero.position.clone().add(new THREE.Vector3(0,.8,0)))<1.5){ heroTakeDamage(15); burst(f.m.position, 16, 0xff7a1a, 4, 3); scene.remove(f.m); fireballs.splice(i,1); continue; }
+    if(f.life<=0 || f.m.position.y<0){ burst(f.m.position, 10, 0xff7a1a, 3, 2); scene.remove(f.m); fireballs.splice(i,1); } }
+  const sp=sparks.geometry.attributes.position.array;
+  for(let i=0;i<300;i++){ if(sparkData[i].life>0){ sparkData[i].life-=dt; sparkData[i].v.y-=9*dt; sp[i*3]+=sparkData[i].v.x*dt; sp[i*3+1]+=sparkData[i].v.y*dt; sp[i*3+2]+=sparkData[i].v.z*dt; if(sparkData[i].life<=0) sp[i*3+1]=-99; } }
+  sparks.geometry.attributes.position.needsUpdate=true;
+  const fp=firePts.geometry.attributes.position.array;
+  for(let i=0;i<500;i++){ if(fireData[i].life>0){ fireData[i].life-=dt; fp[i*3]+=fireData[i].v.x*dt; fp[i*3+1]+=fireData[i].v.y*dt; fp[i*3+2]+=fireData[i].v.z*dt; if(fireData[i].life<=0) fp[i*3+1]=-99; } }
+  firePts.geometry.attributes.position.needsUpdate=true;
+  firePts.material.opacity = breathOn? .9 : Math.max(0, firePts.material.opacity - dt*2);
+  for(let i=0;i<220;i++){ motePos[i*3+1]+=dt*.12; motePos[i*3]+=Math.sin(t*.5+i)*dt*.25; if(motePos[i*3+1]>11) motePos[i*3+1]=0; }
+  motes.geometry.attributes.position.needsUpdate=true;
+
+  const mid = hero.position.clone().lerp(dragon.position, .3);
+  const back = hero.position.clone().sub(dragon.position).setY(0).normalize().multiplyScalar(8);
+  camTargetPos.copy(hero.position).add(back).add(new THREE.Vector3(0, 3.1, 0));
+  camera.position.lerp(camTargetPos, 1-Math.pow(.0018, dt));
+  if(camShake>0){ camera.position.x += (Math.random()-.5)*camShake; camera.position.y += (Math.random()-.5)*camShake; camShake=Math.max(0, camShake-dt*1.4); }
+  camera.lookAt(mid.x, 2.4, mid.z);
+
+  $('heroHp').style.width = heroHp+'%';
+  $('heroSt').style.width = heroSt+'%';
+  $('bossHp').style.width = (dragonHp/dragonMax*100)+'%';
+  if(t>2.5) $('hint').style.display='none';
+
+  renderer.render(scene, camera);
+}
+animate();
+
+function endGame(win){
+  if(gameOver) return; gameOver=true;
+  const sec = Math.round((performance.now()-startedAt)/1000);
+  if(win){
+    const fall=setInterval(()=>{ dragon.rotation.z = Math.min(dragon.rotation.z + .04, 1.25); dragon.position.y = Math.max(dragon.position.y - .05, -1.2); if(dragon.rotation.z>=1.25) clearInterval(fall); }, 30);
+    sfxRoar(); camShake=.8;
+    $('endTitle').textContent='屠 龙 成 功'; $('endTitle').style.color='#ffd76a';
+    $('endSub').textContent=`用时 ${sec} 秒 · 命中 ${hitCount} 剑 · 小小的骑士，大大的传说`;
+  } else {
+    heroBody.rotation.x = -Math.PI/2; heroBody.position.y=-.43;
+    $('endTitle').textContent='猫 骑 士 倒 下'; $('endTitle').style.color='#ff8a7a';
+    $('endSub').textContent=`坚持了 ${sec} 秒 · 黑龙还剩 ${Math.ceil(dragonHp/dragonMax*100)}% 生命 · 举盾挡火、翻滚躲俯冲`;
+  }
+  setTimeout(()=>{ $('endPanel').style.display='flex'; }, win?1400:900);
+}
+$('restartBtn').addEventListener('click', ()=>location.reload());
+addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+</script>
+</body>
+</html>

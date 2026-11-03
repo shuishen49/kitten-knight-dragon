@@ -1,0 +1,4 @@
+# 原始大文件与中间产物（可由 build.py 或源文件还原的除外）
+models/model1.glb
+models/tex*.png
+*.muse-github-snapshot-sync.json
