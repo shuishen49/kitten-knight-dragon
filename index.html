@@ -694,7 +694,7 @@ function animate(){
   // 骨骼动画状态机
   if(rigModel && mixer && !gameOver){
     let want = 'idle', once = false;
-    if(rollTimer>0){ want='roll'; once=true; if(!window.__wasRoll){ acts.roll && acts.roll.stop(); curActName=''; } }
+    if(rollTimer>0){ want = rollAxis==='z'? (rollSign<0? 'rollSideL' : 'rollSideR') : (rollSign<0? 'rollBack' : 'roll'); once=true; if(!window.__wasRoll){ const ra=acts[want]; if(ra){ ra.stop(); curActName=''; } } }
     else if(jumpTimer>0){ want='jump'; once=true; if(!window.__wasJump){ acts.jump && acts.jump.stop(); curActName=''; } }
     else if(atkTimer>0){ want='slash'; once=true; if(!window.__wasAtk){ acts.slash && acts.slash.stop(); curActName=''; } }
     else if(blocking) want='block';
