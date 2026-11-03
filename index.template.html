@@ -318,7 +318,7 @@ const bodyMesh = dpart(new THREE.SphereGeometry(2.0, 22, 18), dragonMat, 0, 2.5,
 const bellyMesh = dpart(new THREE.SphereGeometry(1.8, 20, 16), bellyMat2, 0, 2.2, .3); bellyMesh.scale.set(.9,.88,1.3);
 // 胸口火核（蓄力/喷火时变亮）
 const core = dpart(new THREE.SphereGeometry(.37, 14, 12), coreMat, 0, 2.1, -1.8); core.scale.set(1,1.2,.55);
-const coreLight = new THREE.PointLight(0xff6a00, 6, 13, 1.7); coreLight.position.set(0,2.1,-1.7); dBody.add(coreLight);
+let coreLight = new THREE.PointLight(0xff6a00, 6, 13, 1.7); coreLight.position.set(0,2.1,-1.7); dBody.add(coreLight);
 // 背刺：从头到尾一整排
 for(let i=0;i<9;i++){ const z=-.9+i*.62, s=dpart(new THREE.ConeGeometry(.2, .95-Math.abs(i-4)*.07, 5), spikeMat, 0, 4.35-Math.pow(Math.abs(i-3.5),1.6)*.14, z); s.rotation.x=-.3; }
 // 脖子（4 节蛇形）+ 头
@@ -327,7 +327,7 @@ const neck = new THREE.Group(); neck.position.set(0,3.5,-1.5); dBody.add(neck);
   dpart(new THREE.SphereGeometry(r,14,12), dragonMat, x,y,z, neck);
   const sp=dpart(new THREE.ConeGeometry(.16,.7,5), spikeMat, x, y+r*.85, z+.25, neck); sp.rotation.x=-.5;
 });
-const headPivot = new THREE.Group(); headPivot.position.set(0,2.4,-3.05); headPivot.scale.setScalar(1.12); neck.add(headPivot);
+let headPivot = new THREE.Group(); headPivot.position.set(0,2.4,-3.05); headPivot.scale.setScalar(1.12); neck.add(headPivot);
 const skull = dpart(new THREE.SphereGeometry(.98,18,14), dragonMat, 0,0,0, headPivot); skull.scale.set(.92,.82,1.3);
 const snout = dpart(new THREE.BoxGeometry(.85,.5,1.35), dragonMat, 0,-.2,-1.2, headPivot);
 const jaw = dpart(new THREE.BoxGeometry(.72,.16,1.15), bellyMat2, 0,-.55,-1.05, headPivot);
@@ -339,8 +339,8 @@ for(const sx of [-1,1]){
   dpart(new THREE.SphereGeometry(.13,10,8), new THREE.MeshBasicMaterial({color:0xffa018}), sx*.44,.18,-.8, headPivot); // 琥珀眼
 }
 for(let ci=0;ci<5;ci++){ const crown=dpart(new THREE.ConeGeometry(.11,.65-ci*.06,5), spikeMat, (ci-2)*.2, .8, .15+Math.abs(ci-2)*.08, headPivot); crown.rotation.x=-.35; }
-const mouthPos = new THREE.Object3D(); mouthPos.position.set(0,-.35,-2.0); headPivot.add(mouthPos);
-const mouthLight = new THREE.PointLight(0xff4400, 0, 16, 1.6); mouthLight.position.copy(mouthPos.position); headPivot.add(mouthLight);
+let mouthPos = new THREE.Object3D(); mouthPos.position.set(0,-.35,-2.0); headPivot.add(mouthPos);
+let mouthLight = new THREE.PointLight(0xff4400, 0, 16, 1.6); mouthLight.position.copy(mouthPos.position); headPivot.add(mouthLight);
 // 翼：更大，带指骨
 function makeWing(side){
   const w = new THREE.Group(); w.position.set(side*1.6, 4.2, .7); dBody.add(w);
@@ -375,6 +375,52 @@ dragon.scale.setScalar(1.12);
 
 // 几何材质环境反射强度（雾天别太亮）
 scene.traverse(o=>{ if(o.isMesh){ const ms=Array.isArray(o.material)?o.material:[o.material]; ms.forEach(m=>{ if(m && m.isMeshStandardMaterial) m.envMapIntensity=.45; }); } });
+
+/* ================= 真模型黑龙（混元多视图 + 程序化骨骼）：加载成功替换几何龙，失败保留几何版 ================= */
+const DRAGON_B64 = '%%DRAGON_B64%%'; // 单文件版注入的是骨骼版龙模型
+let dragonRigged = false, dMixer = null, dActs = {}, dCurAct = '', dCoreSprite = null, dHurtT = 0, dPrevState = '';
+function dSetAct(name, once){
+  const a = dActs[name]; if(!a) return;
+  if(dCurAct === name && !once) return;
+  const prev = dActs[dCurAct];
+  a.enabled = true; a.setLoop(once? THREE.LoopOnce : THREE.LoopRepeat); a.clampWhenFinished = !!once; a.fadeIn(.09).play();
+  if(prev && prev !== a) prev.fadeOut(.09);
+  dCurAct = name;
+}
+function setupDragonModel(gltf){
+  const m = gltf.scene;
+  const pivot = new THREE.Group(); pivot.add(m);
+  m.rotation.y = Math.PI; // 模型 +Z 朝脸 -> 对齐几何龙的 -Z 朝向约定
+  m.scale.setScalar(15);
+  pivot.position.z = .55;
+  m.traverse(o=>{ if(o.isMesh){ o.castShadow=true; const ms=Array.isArray(o.material)?o.material:[o.material]; ms.forEach(mm=>{ if(mm && mm.isMeshStandardMaterial) mm.envMapIntensity=.5; }); } });
+  dragon.add(pivot);
+  dBody.visible = false;
+  dragonRigged = true;
+  dMixer = new THREE.AnimationMixer(m);
+  gltf.animations.forEach(c=>{ dActs[c.name] = dMixer.clipAction(c); });
+  const bones = {}; m.traverse(o=>{ if(o.isBone) bones[o.name] = o; });
+  // 逻辑锚点改挂骨骼：头中心/嘴/嘴光/火核光（原几何锚点随 dBody 隐藏停用）
+  headPivot = new THREE.Object3D(); headPivot.position.set(0, .01, .03); bones.head.add(headPivot);
+  mouthPos = new THREE.Object3D(); mouthPos.position.set(0, -.045, .075); bones.head.add(mouthPos);
+  mouthLight = new THREE.PointLight(0xff4400, 0, 16, 1.6); mouthLight.position.copy(mouthPos.position); bones.head.add(mouthLight);
+  coreLight = new THREE.PointLight(0xff6a00, 6, 13, 1.7); coreLight.position.set(0, -.05, .04); bones.chest.add(coreLight);
+  // 胸口火核辉光：贴图火核不会自己变亮，叠一层加色辉光，强度在 updateDragon 里跟随 coreMat
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const cx2 = cv.getContext('2d'); const gr = cx2.createRadialGradient(64,64,2, 64,64,64);
+  gr.addColorStop(0, 'rgba(255,190,90,.9)'); gr.addColorStop(.35, 'rgba(255,110,20,.38)'); gr.addColorStop(1, 'rgba(255,80,0,0)');
+  cx2.fillStyle = gr; cx2.fillRect(0,0,128,128);
+  dCoreSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, opacity: .35, blending: THREE.AdditiveBlending, depthWrite: false }));
+  dCoreSprite.scale.set(.105, .105, 1); dCoreSprite.position.set(0, -.075, .025); bones.chest.add(dCoreSprite);
+  dSetAct('idle');
+}
+function tryLoadDragon(url){ new GLTFLoader().load(url, g=>setupDragonModel(g), undefined, ()=>{}); }
+if(DRAGON_B64.length > 100){
+  const dBlobUrl = URL.createObjectURL(new Blob([Uint8Array.from(atob(DRAGON_B64), c=>c.charCodeAt(0))], {type:'model/gltf-binary'}));
+  tryLoadDragon(dBlobUrl);
+} else {
+  tryLoadDragon('models/dragon-anim.glb');
+}
 
 /* ================= BGM：用户提供视频的原片音轨（内嵌）+ 合成备用 ================= */
 let AC=null, bgmOn=true, master=null, musicTimer=null, nextBarTime=0, barIdx=0, useSynth=false;
@@ -548,6 +594,7 @@ function dragonTakeDamage(dmg, holy=false, hitPos=null){
   camShake = Math.max(camShake, holy? .5 : .16);
   dragonKickDir.copy(dragon.position).sub(hero.position).setY(0).normalize();
   dragonKickT = holy? .3 : .18;
+  if(dragonRigged && dragonState==='strafe' && dActs.hurt){ dActs.hurt.stop(); if(dCurAct==='hurt') dCurAct=''; dHurtT = .35; }
   spawnDmg(hp2.clone().add(new THREE.Vector3(0,.9,0)), dmg, holy?'#ff9a2e':'#ffd76a', holy?36:25);
   if(holy){ sfxHoly(); holyFx(hp2); const c=$('combo'); c.textContent='3 连斩 · 圣光爆发!'; c.style.opacity=1; setTimeout(()=>c.style.opacity=0, 800); }
   if(dragonHp<=0) endGame(true);
@@ -623,6 +670,7 @@ function updateDragon(dt, t){
   if(!breathOn && breathCone.material.opacity<.01) breathCone.position.y = -99;
   coreMat.emissiveIntensity = breathOn? 3.2 : dragonState==='charge'? 2.2+Math.sin(t*16)*.8 : .9+Math.sin(t*2.2)*.15;
   coreLight.intensity = coreMat.emissiveIntensity*5;
+  if(dCoreSprite) dCoreSprite.material.opacity = Math.min(.8, .1 + coreMat.emissiveIntensity*.2);
 
   switch(dragonState){
     case 'strafe': {
@@ -787,6 +835,26 @@ function animate(){
 
   updateDragon(dt, t);
 
+  // 真模型龙动画驱动：按状态机选片段；龙死后死亡片段继续走完，猫死后冻结（与几何版一致）
+  if(dMixer && !(gameOver && dragonHp>0)){
+    if(gameOver && dragonHp<=0){
+      if(dCurAct !== 'death') dSetAct('death', true);
+    } else {
+      if(dragonState !== dPrevState){ // 一次性片段在状态切换时重播
+        if(dragonState==='bite' && dActs.bite){ dActs.bite.stop(); if(dCurAct==='bite') dCurAct=''; }
+        if(dragonState==='roar' && dActs.roar){ dActs.roar.stop(); if(dCurAct==='roar') dCurAct=''; }
+        dPrevState = dragonState;
+      }
+      let dWant = 'idle', dOnce = false;
+      if(dHurtT>0){ dHurtT -= dt; dWant = 'hurt'; dOnce = true; }
+      else if(dragonState==='fly' || dragonState==='dive') dWant = 'flap';
+      else if(dragonState==='breath' || dragonState==='charge') dWant = 'breath';
+      else if(dragonState==='bite'){ dWant = 'bite'; dOnce = true; }
+      else if(dragonState==='roar'){ dWant = 'roar'; dOnce = true; }
+      dSetAct(dWant, dOnce);
+    }
+    dMixer.update(dt);
+  }
   for(let i=fireballs.length-1;i>=0;i--){ const f=fireballs[i]; f.m.position.addScaledVector(f.v, dt); f.life-=dt;
     if(f.m.position.distanceTo(hero.position.clone().add(new THREE.Vector3(0,.8,0)))<1.5){ heroTakeDamage(15); burst(f.m.position, 16, 0xff7a1a, 4, 3); scene.remove(f.m); fireballs.splice(i,1); continue; }
     if(f.life<=0 || f.m.position.y<0){ burst(f.m.position, 10, 0xff7a1a, 3, 2); scene.remove(f.m); fireballs.splice(i,1); } }
@@ -834,7 +902,7 @@ function endGame(win){
   if(gameOver) return; gameOver=true;
   const sec = Math.round((performance.now()-startedAt)/1000);
   if(win){
-    const fall=setInterval(()=>{ dragon.rotation.z = Math.min(dragon.rotation.z + .04, 1.25); dragon.position.y = Math.max(dragon.position.y - .05, -1.2); if(dragon.rotation.z>=1.25) clearInterval(fall); }, 30);
+    if(!dragonRigged){ const fall=setInterval(()=>{ dragon.rotation.z = Math.min(dragon.rotation.z + .04, 1.25); dragon.position.y = Math.max(dragon.position.y - .05, -1.2); if(dragon.rotation.z>=1.25) clearInterval(fall); }, 30); }
     sfxRoar(); camShake=.8;
     $('endTitle').textContent='屠 龙 成 功'; $('endTitle').style.color='#ffd76a';
     $('endSub').textContent=`用时 ${sec} 秒 · 命中 ${hitCount} 剑 · 小小的骑士，大大的传说`;
