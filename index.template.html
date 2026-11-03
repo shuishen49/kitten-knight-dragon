@@ -643,9 +643,9 @@ function tryRoll(){
 }
 
 /* ================= 恶龙 AI：开局即战 ================= */
-let dragonState='strafe', stateTime=1.2, breathOn=false, flyHeight=0, diveTarget=null, roarDone=false;
+let dragonState='strafe', stateTime=1.2, breathOn=false, flyHeight=0, diveTarget=null, roarDone=false, clawHit=false;
 const phase = ()=> dragonHp>700?1 : dragonHp>380?2 : 3;
-function setDragonState(s, t){ dragonState=s; stateTime=t; breathOn = (s==='breath'); if(s==='breath') sfxFireBurst(); if(s==='roar'){ sfxRoar(); camShake=Math.max(camShake,.5);} }
+function setDragonState(s, t){ dragonState=s; stateTime=t; breathOn = (s==='breath'); if(s==='claw') clawHit=false; if(s==='breath') sfxFireBurst(); if(s==='roar'){ sfxRoar(); camShake=Math.max(camShake,.5);} }
 function dragonFaceHero(dt, speed=3){
   const f = hero.position.clone().sub(dragon.position).setY(0).normalize();
   const target = Math.atan2(-f.x, -f.z);
@@ -683,7 +683,7 @@ function updateDragon(dt, t){
       headPivot.rotation.x = Math.sin(t*1.4)*.06;
       if(stateTime<=0){
         if(!roarDone){ roarDone=true; setDragonState('roar', 1.0); }
-        else if(dist<7.5) setDragonState(Math.random()<.5?'bite':'breath', dist<7.5&&Math.random()<.5? .7 : 2.6);
+        else if(dist<7.5){ const r=Math.random(); if(dist<6.8 && r<.34) setDragonState('claw', .75); else if(r<.62) setDragonState('bite', .7); else setDragonState('breath', 2.6); }
         else if(dist<14) setDragonState(Math.random()<.55?'breath':'charge', Math.random()<.55?2.6:.7);
         else setDragonState(Math.random()<.6?'charge':'strafe', Math.random()<.6?.7:.8);
         if(Math.random()<.22 && dist<16) setDragonState('fly', 2.2);
@@ -724,6 +724,18 @@ function updateDragon(dt, t){
       dragonFaceHero(dt, 4);
       dragon.position.addScaledVector(dragonForward(), dt*10);
       if(dist<5){ heroTakeDamage(16); setDragonState('strafe', 1.0); }
+      if(stateTime<=0) setDragonState('strafe', .8);
+      break;
+    case 'claw':
+      dragonFaceHero(dt, 3.5);
+      if(!dragonRigged && stateTime>.38) dragon.position.addScaledVector(dragonForward(), dt*2.5); // 几何版无爪：以前扑代替
+      if(!clawHit && stateTime<=.38){
+        clawHit = true;
+        if(dist<6.4){
+          const toH = hero.position.clone().sub(dragon.position).setY(0).normalize();
+          if(toH.dot(dragonForward()) > .1){ heroTakeDamage(15); burst(hero.position.clone().add(new THREE.Vector3(0,.9,0)), 12, 0xffc9a8, 3, 2.5); }
+        }
+      }
       if(stateTime<=0) setDragonState('strafe', .8);
       break;
     case 'fly':
@@ -842,6 +854,7 @@ function animate(){
     } else {
       if(dragonState !== dPrevState){ // 一次性片段在状态切换时重播
         if(dragonState==='bite' && dActs.bite){ dActs.bite.stop(); if(dCurAct==='bite') dCurAct=''; }
+        if(dragonState==='claw' && dActs.claw){ dActs.claw.stop(); if(dCurAct==='claw') dCurAct=''; }
         if(dragonState==='roar' && dActs.roar){ dActs.roar.stop(); if(dCurAct==='roar') dCurAct=''; }
         dPrevState = dragonState;
       }
@@ -850,6 +863,7 @@ function animate(){
       else if(dragonState==='fly' || dragonState==='dive') dWant = 'flap';
       else if(dragonState==='breath' || dragonState==='charge') dWant = 'breath';
       else if(dragonState==='bite'){ dWant = 'bite'; dOnce = true; }
+      else if(dragonState==='claw'){ dWant = 'claw'; dOnce = true; }
       else if(dragonState==='roar'){ dWant = 'roar'; dOnce = true; }
       dSetAct(dWant, dOnce);
     }
