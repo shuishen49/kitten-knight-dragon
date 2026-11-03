@@ -480,7 +480,7 @@ function burst(pos, n, color, spread=3, up=3){
   const p=sparks.geometry.attributes.position.array; let c=0;
   for(let i=0;i<300 && c<n;i++){ if(sparkData[i].life<=0){ sparkData[i].life=.4+Math.random()*.3; p[i*3]=pos.x; p[i*3+1]=pos.y; p[i*3+2]=pos.z; sparkData[i].v.set((Math.random()-.5)*spread, Math.random()*up, (Math.random()-.5)*spread); c++; } }
 }
-const firePts = makePoints(500, .55, 0xff6a00, .85);
+const firePts = makePoints(500, .8, 0xff7a1a, .9);
 const fireData=[]; { const p=firePts.geometry.attributes.position.array; for(let i=0;i<500;i++){ p[i*3+1]=-99; fireData.push({v:new THREE.Vector3(), life:0}); } }
 const fireballs=[];
 const fireballGeo=new THREE.SphereGeometry(.42,12,10);
@@ -491,6 +491,9 @@ function shootFireball(from, to){
   fireballs.push({m, v: to.clone().sub(from).normalize().multiplyScalar(17), life:4});
   sfxFireBurst();
 }
+const breathConeGeo = new THREE.ConeGeometry(2.7, 13, 20, 1, true); breathConeGeo.translate(0, -6.5, 0);
+const breathCone = new THREE.Mesh(breathConeGeo, new THREE.MeshBasicMaterial({ color:0xff7a26, transparent:true, opacity:0, blending:THREE.AdditiveBlending, side:THREE.DoubleSide, depthWrite:false }));
+breathCone.position.y = -99; scene.add(breathCone);
 const holyLight = new THREE.PointLight(0xffc860, 0, 20, 1.7); scene.add(holyLight);
 const pillar = new THREE.Mesh(new THREE.CylinderGeometry(.75, 1.25, 7.5, 20, 1, true), new THREE.MeshBasicMaterial({ color:0xffd98a, transparent:true, opacity:0, blending:THREE.AdditiveBlending, side:THREE.DoubleSide, depthWrite:false }));
 pillar.position.y = -99; scene.add(pillar);
@@ -616,6 +619,8 @@ function updateDragon(dt, t){
   wingR.rotation.z =  0.22 - Math.sin(t*flapF)*.5;
   tailSegs.forEach((s,i)=>{ s.rotation.y = Math.sin(t*2.0 - i*.55)*.2; });
   mouthLight.intensity = breathOn? 60 : (dragonState==='charge'? 26+Math.sin(t*20)*8 : 0);
+  breathCone.material.opacity += ((breathOn? .16 : 0) - breathCone.material.opacity) * Math.min(1, dt*7);
+  if(!breathOn && breathCone.material.opacity<.01) breathCone.position.y = -99;
   coreMat.emissiveIntensity = breathOn? 3.2 : dragonState==='charge'? 2.2+Math.sin(t*16)*.8 : .9+Math.sin(t*2.2)*.15;
   coreLight.intensity = coreMat.emissiveIntensity*5;
 
@@ -653,16 +658,18 @@ function updateDragon(dt, t){
       const fwd=dragonForward();
       const pArr=firePts.geometry.attributes.position.array;
       let spawned=0;
-      for(let i=0;i<500 && spawned<7;i++){ if(fireData[i].life<=0){
+      for(let i=0;i<500 && spawned<13;i++){ if(fireData[i].life<=0){
         fireData[i].life=.5+Math.random()*.35;
         pArr[i*3]=mouth.x; pArr[i*3+1]=mouth.y; pArr[i*3+2]=mouth.z;
         fireData[i].v.copy(fwd).multiplyScalar(15+Math.random()*7);
-        fireData[i].v.x+=(Math.random()-.5)*3.4; fireData[i].v.y+=(Math.random()-.5)*2.2 - .6; fireData[i].v.z+=(Math.random()-.5)*3.4;
+        fireData[i].v.x+=(Math.random()-.5)*4.6; fireData[i].v.y+=(Math.random()-.5)*2.6 - .6; fireData[i].v.z+=(Math.random()-.5)*4.6;
         spawned++;
       }}
-      const toHero=hero.position.clone().sub(dragon.position).setY(0);
+      breathCone.position.copy(mouth);
+      breathCone.quaternion.setFromUnitVectors(new THREE.Vector3(0,-1,0), fwd);
+      const toHero=hero.position.clone().sub(mouth).setY(0);
       const angle=toHero.clone().normalize().dot(fwd);
-      if(toHero.length()<14.5 && angle>.72 && hurtCd<=0) heroTakeDamage(8);
+      if(toHero.length()<13.5 && angle>.9 && hurtCd<=0){ heroTakeDamage(8); burst(hero.position.clone().add(new THREE.Vector3(0,.9,0)), 10, 0xff7a1a, 3, 3); }
       if(stateTime<=0) setDragonState('strafe', .9/speedMul);
       break; }
     case 'bite':
