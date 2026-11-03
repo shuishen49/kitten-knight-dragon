@@ -75,12 +75,12 @@
   <div id="controls">
     移动 <b>W</b><b>A</b><b>S</b><b>D</b> · 疾跑 <b>Shift</b><br>
     挥剑 <b>J</b> / <b>左键</b> · 举盾格挡 <b>K</b> / <b>右键按住</b><br>
-    翻滚闪避 <b>空格</b> · 三连斩第 3 剑圣光爆发
+    翻滚闪避 <b>空格</b> · 跳跃 <b>L</b> · 三连斩第 3 剑圣光爆发
   </div>
   <div id="hint">雾原黑龙已至 —— 小猫骑士，拔剑！</div>
 </div>
 <div id="touch">
-  <button id="tAtk">⚔️斩</button><button id="tBlk">🛡️盾</button><button id="tRoll">💨滚</button>
+  <button id="tAtk">⚔️斩</button><button id="tBlk">🛡️盾</button><button id="tRoll">💨滚</button><button id="tJmp">🦘跳</button>
 </div>
 <div id="endPanel">
   <div class="veil"></div>
@@ -270,18 +270,38 @@ const modelPivot = new THREE.Group(); heroBody.add(modelPivot);
 const shieldBubble = new THREE.Mesh(new THREE.SphereGeometry(.95, 20, 14),
   new THREE.MeshStandardMaterial({color:0x8fc4ff, transparent:true, opacity:0, roughness:.15, metalness:0, emissive:0x2a5a9e, emissiveIntensity:.7, depthWrite:false}));
 shieldBubble.position.set(0,.78,.12); shieldBubble.scale.set(1,1.05,.82); heroBody.add(shieldBubble);
-let catModel = null;
-const CAT_B64 = '%%CAT_B64%%'; // 单文件版组装时注入；为空则加载同目录 models/cat.glb
-const catSrc = CAT_B64.length > 100
-  ? URL.createObjectURL(new Blob([Uint8Array.from(atob(CAT_B64), c=>c.charCodeAt(0))], {type:'model/gltf-binary'}))
-  : 'models/cat.glb';
-new GLTFLoader().load(catSrc, (gltf)=>{
-  catModel = gltf.scene;
-  catModel.scale.setScalar(2.5);
-  catModel.traverse(o=>{ if(o.isMesh){ o.castShadow=true; const ms=Array.isArray(o.material)?o.material:[o.material]; ms.forEach(m=>{ if(m && m.isMeshStandardMaterial) m.envMapIntensity=.7; }); } });
-  modelPivot.add(catModel);
+let catModel = null, rigModel = null, mixer = null; const acts = {}; let curActName = '';
+function setAct(name, once){
+  const a = acts[name]; if(!a) return;
+  if(curActName === name) return; // 一次性动作的重触发由调用方先 stop 并清空 curActName
+  const prev = acts[curActName];
+  a.reset().setLoop(once? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+  a.clampWhenFinished = !!once; a.fadeIn(.07).play();
+  if(prev && prev !== a) prev.fadeOut(.07);
+  curActName = name;
+}
+function setupModel(gltf, isRig){
+  const m = gltf.scene;
+  m.scale.setScalar(isRig? 1.55 : 2.5);
+  m.traverse(o=>{ if(o.isMesh){ o.castShadow=true; const ms=Array.isArray(o.material)?o.material:[o.material]; ms.forEach(mm=>{ if(mm && mm.isMeshStandardMaterial) mm.envMapIntensity=.7; }); } });
+  modelPivot.add(m);
   heroBody.children.forEach(c=>{ if(c!==modelPivot && c!==shieldBubble) c.visible=false; });
-}, undefined, ()=>{ catModel = null; });
+  if(isRig){
+    rigModel = m; mixer = new THREE.AnimationMixer(m);
+    gltf.animations.forEach(c=>{ acts[c.name] = mixer.clipAction(c); });
+    setAct('idle');
+  } else catModel = m;
+}
+const CAT_B64 = '%%CAT_B64%%'; // 单文件版注入的是骨骼版模型
+function tryLoadModel(url, isRig, next){
+  new GLTFLoader().load(url, g=>setupModel(g, isRig), undefined, ()=>{ if(next) next(); });
+}
+if(CAT_B64.length > 100){
+  const blobUrl = URL.createObjectURL(new Blob([Uint8Array.from(atob(CAT_B64), c=>c.charCodeAt(0))], {type:'model/gltf-binary'}));
+  tryLoadModel(blobUrl, true, null);
+} else {
+  tryLoadModel('models/cat-anim.glb', true, ()=> tryLoadModel('models/cat.glb', false, null));
+}
 
 /* ================= 雾原黑龙：深灰黑 · 满身尖刺 · 胸口火核 ================= */
 const dragonMat = new THREE.MeshStandardMaterial({color:0x3b4148, roughness:.72, metalness:.2});
@@ -425,7 +445,7 @@ const $=id=>document.getElementById(id);
 let heroHp=100, heroSt=100, dragonHp=1000, dragonMax=1000;
 let gameOver=false, startedAt=performance.now(), hitCount=0;
 let atkTimer=0, atkCombo=0, atkWindow=0, rollTimer=0, rollDir=new THREE.Vector3(), hurtCd=0;
-let blocking=false, camShake=0, glowLevel=.2, rollAxis='x', rollSign=1;
+let blocking=false, camShake=0, glowLevel=.2, rollAxis='x', rollSign=1, jumpTimer=0;
 function camBasis(){
   const f = new THREE.Vector3(); camera.getWorldDirection(f); f.y = 0;
   if(f.lengthSq() < .001) f.set(0,0,-1); f.normalize();
@@ -434,7 +454,7 @@ function camBasis(){
 }
 const keys={};
 const ARROW2WASD = { ArrowUp:'KeyW', ArrowDown:'KeyS', ArrowLeft:'KeyA', ArrowRight:'KeyD' };
-addEventListener('keydown', e=>{ keys[e.code]=true; if(ARROW2WASD[e.code]){ keys[ARROW2WASD[e.code]]=true; e.preventDefault(); } if(e.code==='Space'){ e.preventDefault(); tryRoll(); } if(e.code==='KeyJ') tryAttack(); });
+addEventListener('keydown', e=>{ keys[e.code]=true; if(ARROW2WASD[e.code]){ keys[ARROW2WASD[e.code]]=true; e.preventDefault(); } if(e.code==='Space'){ e.preventDefault(); tryRoll(); } if(e.code==='KeyJ') tryAttack(); if(e.code==='KeyL') tryJump(); });
 addEventListener('keyup', e=>{ keys[e.code]=false; if(ARROW2WASD[e.code]) keys[ARROW2WASD[e.code]]=false; });
 let mouseBlock=false;
 renderer.domElement.addEventListener('pointerdown', e=>{ if(e.button===0) tryAttack(); if(e.button===2) mouseBlock=true; });
@@ -444,6 +464,7 @@ $('tAtk').addEventListener('touchstart', e=>{e.preventDefault(); initAudio(); tr
 $('tRoll').addEventListener('touchstart', e=>{e.preventDefault(); tryRoll();});
 let touchBlock=false;
 $('tBlk').addEventListener('touchstart', e=>{e.preventDefault(); touchBlock=true;});
+const tJmpEl = $('tJmp'); if(tJmpEl) tJmpEl.addEventListener('touchstart', e=>{e.preventDefault(); initAudio(); tryJump();});
 $('tBlk').addEventListener('touchend', ()=>touchBlock=false);
 
 const sparks = makePoints(300, .2, 0xffcc55, 1);
@@ -513,6 +534,12 @@ function tryAttack(){
       if(dragonState==='breath' && Math.random()<.35){ setDragonState('strafe', .8); }
     }
   }, 130);
+}
+function tryJump(){
+  if(gameOver || jumpTimer>0 || rollTimer>0) return;
+  jumpTimer=.6;
+  burst(hero.position.clone().add(new THREE.Vector3(0,.1,0)), 6, 0xb9c49a, 2, 1.2);
+  sfxWhoosh();
 }
 function tryRoll(){
   if(gameOver || rollTimer>0 || heroSt<18) return;
@@ -641,6 +668,7 @@ function animate(){
   const t = clock.elapsedTime;
   if(atkTimer>0) atkTimer-=dt; if(atkWindow>0) atkWindow-=dt; else atkCombo=0;
   if(rollTimer>0) rollTimer-=dt; if(hurtCd>0) hurtCd-=dt;
+  if(jumpTimer>0) jumpTimer-=dt;
   glowLevel = Math.max(.18, glowLevel - dt*2.4);
   bladeMat.emissiveIntensity = glowLevel + Math.sin(t*3)*0.06;
   swordLight.intensity = glowLevel*7;
@@ -655,12 +683,26 @@ function animate(){
   if(rollTimer>0){
     const rp = 1 - rollTimer/.42; // 0->1
     hero.position.addScaledVector(rollDir, dt*10);
-    hero.position.y = Math.sin(rp*Math.PI)*.16; // 小跳弧线，翻滚时头不擦地
-    heroRoll.rotation[rollAxis] = rp*Math.PI*2*rollSign;
-    const curl = Math.sin(rp*Math.PI); // 中段蜷成一团
-    heroBody.scale.set(1+.12*curl, 1-.22*curl, 1+.12*curl);
+    hero.position.y = Math.sin(rp*Math.PI)*(rigModel? .05 : .16); // 小跳弧线，翻滚时头不擦地
+    if(!rigModel){ // 骨骼版由 roll 动画片段翻，静态/几何版才整身转
+      heroRoll.rotation[rollAxis] = rp*Math.PI*2*rollSign;
+      const curl = Math.sin(rp*Math.PI); // 中段蜷成一团
+      heroBody.scale.set(1+.12*curl, 1-.22*curl, 1+.12*curl);
+    }
   }
-  else { heroRoll.rotation.set(0,0,0); heroBody.scale.set(1,1,1); hero.position.y=0; if(!gameOver) heroBody.rotation.x=0; if(moving && atkTimer<=0) hero.position.addScaledVector(mv, dt*speed); }
+  else { heroRoll.rotation.set(0,0,0); heroBody.scale.set(1,1,1); hero.position.y = jumpTimer>0? Math.sin((1-jumpTimer/.6)*Math.PI)*.85 : 0; if(!gameOver) heroBody.rotation.x=0; if(moving && atkTimer<=0) hero.position.addScaledVector(mv, dt*speed); }
+  // 骨骼动画状态机
+  if(rigModel && mixer && !gameOver){
+    let want = 'idle', once = false;
+    if(rollTimer>0){ want='roll'; once=true; if(!window.__wasRoll){ acts.roll && acts.roll.stop(); curActName=''; } }
+    else if(jumpTimer>0){ want='jump'; once=true; if(!window.__wasJump){ acts.jump && acts.jump.stop(); curActName=''; } }
+    else if(atkTimer>0){ want='slash'; once=true; if(!window.__wasAtk){ acts.slash && acts.slash.stop(); curActName=''; } }
+    else if(blocking) want='block';
+    else if(moving) want='walk';
+    setAct(want, once);
+    window.__wasRoll = rollTimer>0; window.__wasJump = jumpTimer>0; window.__wasAtk = atkTimer>0;
+    mixer.update(dt);
+  }
   const hd = Math.hypot(hero.position.x, hero.position.z);
   if(hd>20){ hero.position.x*=20/hd; hero.position.z*=20/hd; }
   const dd = Math.hypot(dragon.position.x, dragon.position.z);
@@ -669,7 +711,7 @@ function animate(){
     const faceVec = (moving && atkTimer<=0 && rollTimer<=0) ? mv : dragon.position.clone().sub(hero.position).setY(0);
     if(faceVec.lengthSq()>0){ const ty=Math.atan2(faceVec.x, faceVec.z); let df=ty-hero.rotation.y; while(df>Math.PI)df-=Math.PI*2; while(df<-Math.PI)df+=Math.PI*2; hero.rotation.y += df*Math.min(1, dt*14); }
   }
-  const bob = moving && rollTimer<=0 ? Math.abs(Math.sin(t*(sprint?12:9)))*.05 : Math.sin(t*2.2)*.015;
+  const bob = rigModel ? 0 : (moving && rollTimer<=0 ? Math.abs(Math.sin(t*(sprint?12:9)))*.05 : Math.sin(t*2.2)*.015);
   heroBody.position.y = -.58 + bob;
   headG.rotation.z = Math.sin(t*1.8)*.03;
   headG.rotation.x = rollTimer>0? .55*Math.sin((1-rollTimer/.42)*Math.PI) : (blocking? .12 : Math.sin(t*1.5)*.02);
@@ -677,14 +719,14 @@ function animate(){
   if(atkTimer>0){ const k=1-atkTimer/.32; const swing = atkCombo===0? [-.4,-2.4] : atkCombo===1? [.9,-1.8] : [-.6,-2.9]; armR.rotation.x = THREE.MathUtils.lerp(swing[0], swing[1], Math.sin(k*Math.PI)); armR.rotation.z = atkCombo===1? Math.sin(k*Math.PI)*.9 : 0; }
   else { armR.rotation.x = moving? Math.sin(t*9)*.25 : Math.sin(t*2)*.04; armR.rotation.z=0; }
   if(rollTimer>0){ armR.rotation.x=-.7; armR.rotation.z=.3; armL.rotation.x=-.7; }
-  if(catModel){
+  if(catModel && !rigModel){
     const kk = atkTimer>0 ? Math.sin((1-atkTimer/.32)*Math.PI) : 0;
     modelPivot.rotation.x = kk * (atkCombo===1? -.5 : .62);
     modelPivot.rotation.z = atkTimer>0 ? (atkCombo===1? kk*.3 : -kk*.18) : (moving? Math.sin(t*9)*.045 : Math.sin(t*2)*.018);
     modelPivot.position.z = kk*.22;
     modelPivot.position.y = blocking? -.07 : 0;
   }
-  const targetOp = (blocking && catModel)? .3 : 0;
+  const targetOp = blocking? (rigModel? .16 : (catModel? .3 : 0)) : 0;
   shieldBubble.material.opacity += (targetOp - shieldBubble.material.opacity)*Math.min(1, dt*12);
   if(blocking){ armL.rotation.x=-1.1; armL.rotation.y=.3; shield.position.z=.3; }
   else { armL.rotation.x = moving? -Math.sin(t*9)*.25 : 0; armL.rotation.y=0; shield.position.z=.08; }

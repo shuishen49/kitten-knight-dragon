@@ -12,8 +12,9 @@ t = t.replace('%%BGM_B64%%', b64('assets/bgm.b64'))
 t = t.replace('%%GRASS_B64%%', b64('assets/grass.b64'))
 t = t.replace('%%POSTER_B64%%', b64('assets/poster.b64'))
 (root / 'index.html').write_text(t.replace('%%CAT_B64%%', ''))
-(root / 'index-share.html').write_text(t.replace('%%CAT_B64%%', b64('models/cat.b64')))
+(root / 'index-share.html').write_text(t.replace('%%CAT_B64%%', b64('models/cat-anim.b64')))
 for src, dst in [('assets/bgm.b64', 'assets/bgm.mp3'), ('assets/grass.b64', 'assets/grass.jpg'),
-                 ('assets/poster.b64', 'assets/poster.jpg'), ('models/cat.b64', 'models/cat.glb')]:
+                 ('assets/poster.b64', 'assets/poster.jpg'), ('models/cat.b64', 'models/cat.glb'),
+                 ('models/cat-anim.b64', 'models/cat-anim.glb')]:
     (root / dst).write_bytes(base64.b64decode(b64(src)))
 print('build OK: index.html / index-share.html / 素材二进制已还原')
