@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>probe</title>
+<style>body{background:#101314;color:#d8e0dc;font:13px/1.55 ui-monospace,Consolas,monospace;margin:0;padding:14px}pre{white-space:pre-wrap;margin:0}</style>
+</head>
+<body>
+<pre id="out">booting…</pre>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const L = [];
+const say = (s) => { L.push(s); document.getElementById('out').textContent = L.join('\n'); document.title = 'probe:' + L.length; };
+
+/* ---------- 1. 真机加载手工拼的 GLB：GLTFLoader 能不能解析、贴图能不能绑 ---------- */
+new GLTFLoader().load('../models/dragon-anim.glb', (g) => {
+  say('[1] GLB 解析 OK');
+  const sk = [];
+  let tris = 0;
+  g.scene.traverse(o => { if (o.isSkinnedMesh) sk.push(o); });
+  sk.forEach(m => { tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; });
+  say('    skinnedMesh ' + sk.length + '  tris ' + Math.round(tris));
+  if (sk[0]) {
+    const b = sk[0].skeleton.bones;
+    say('    顶点 ' + sk[0].geometry.attributes.position.count + '  骨骼 ' + b.length);
+    say('    骨骼名 ' + b.map(x => x.name).join(' '));
+    say('    有 jaw 骨: ' + (b.some(x => x.name === 'jaw') ? 'YES' : 'NO'));
+    const at = sk[0].geometry.attributes, mt = sk[0].material;
+    say('    uv ' + !!at.uv + '  skinIndex ' + !!at.skinIndex + '  skinWeight ' + !!at.skinWeight
+        + '  法线 ' + !!at.normal + '  贴图 ' + (mt.map ? 'YES ' + mt.map.image.width + 'x' + mt.map.image.height : 'NO')
+        + '  matName ' + mt.name);
+  }
+  const clips = g.animations || [];
+  say('    片段 ' + clips.length);
+  clips.forEach(c => say('      ' + c.name.padEnd(8) + ' dur ' + c.duration.toFixed(2) + 's  轨道 ' + c.tracks.length
+    + '  jaw轨道 ' + c.tracks.filter(t => /jaw/i.test(t.name)).length));
+}, undefined, (e) => say('[1] GLB 解析失败!! ' + (e && e.message ? e.message : e)));
+
+/* ---------- 2. 预警贴花：用真 three.js 逐顶点量出扇面角度与半径 ----------
+   游戏里画贴花的代码与这里逐字相同，所以量出来的就是玩家看到的形状。
+   判据：扇面顶点与「游戏判定用的中心轴」的夹角必须落在 0..half，半径落在 rMin..r。 */
+const TELLS = {
+  claw:  {kind:'fan',  r:6.4,  half:54, dir: 34, rMin:1.6},
+  bite:  {kind:'lane', r:5.6,  half:1.9, dir:  0},
+  sweep: {kind:'fan',  r:7.5,  half:70, dir:180, rMin:1.4},
+  breath:{kind:'fan',  r:13.5, half:26, dir:  0},
+  charge:{kind:'lane', r:13,   half:2.2, dir:  0},
+  dive:  {kind:'ring', r:5.5,  half:0,  dir:  0}
+};
+const RY = 0.7;                                     // 随便给龙一个朝向
+const grp = new THREE.Group(); grp.rotation.y = RY; grp.updateMatrixWorld(true);
+const FWD = new THREE.Vector3(-Math.sin(RY), 0, -Math.cos(RY));
+say('[2] dragonForward 等价式 (' + FWD.x.toFixed(3) + ', 0, ' + FWD.z.toFixed(3) + ')');
+
+function build(c){
+  let gg;
+  if (c.kind === 'fan'){ const h = c.half*Math.PI/180; gg = new THREE.RingGeometry((c.rMin||0)/c.r, 1, 34, 1, -h, h*2).rotateX(-Math.PI/2); }
+  else if (c.kind === 'lane'){ gg = new THREE.PlaneGeometry(2,1).rotateX(-Math.PI/2); gg.translate(0,0,-.5); }
+  else gg = new THREE.RingGeometry(.84,1,48).rotateX(-Math.PI/2);
+  const m = new THREE.Mesh(gg, new THREE.MeshBasicMaterial());
+  m.rotation.y = (c.kind === 'fan'? Math.PI/2 : 0) + c.dir*Math.PI/180;
+  m.scale.set(c.kind === 'lane'? c.half : c.r, 1, c.r);
+  m.position.set(0,.05,0);
+  grp.add(m); grp.updateMatrixWorld(true);
+  return m;
+}
+const v = new THREE.Vector3();
+for (const k in TELLS){
+  const c = TELLS[k], m = build(c), pos = m.geometry.attributes.position;
+  const dirv = new THREE.Vector3(-Math.sin(RY + c.dir*Math.PI/180), 0, -Math.cos(RY + c.dir*Math.PI/180));
+  let amin = 1e9, amax = -1e9, rmin = 1e9, rmax = -1e9, lmax = -1e9, fmin = 1e9, fmax = -1e9;
+  for (let i = 0; i < pos.count; i++){
+    v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld).setY(0);
+    const rr = v.length();
+    const dot = v.dot(dirv);
+    const ang = Math.acos(Math.max(-1, Math.min(1, dot / Math.max(1e-9, rr)))) * 180/Math.PI;
+    if (rr > 1e-6){ amin = Math.min(amin, ang); amax = Math.max(amax, ang); }   // 圆心退化顶点 (rr=0) 不参与夹角统计
+    rmin = Math.min(rmin, rr);  rmax = Math.max(rmax, rr);
+    fmin = Math.min(fmin, dot); fmax = Math.max(fmax, dot);
+    lmax = Math.max(lmax, v.clone().sub(dirv.clone().multiplyScalar(dot)).length());
+  }
+  if (c.kind === 'fan'){
+    say('[2] ' + k.padEnd(7) + '扇面 与判定中轴夹角 ' + amin.toFixed(1) + '..' + amax.toFixed(1) + '° (要 0..' + c.half + ')'
+        + '  半径 ' + rmin.toFixed(2) + '..' + rmax.toFixed(2) + ' (要 ' + (c.rMin||0) + '..' + c.r + ')');
+  } else if (c.kind === 'lane'){
+    say('[2] ' + k.padEnd(7) + '长条 前向投影 ' + fmin.toFixed(2) + '..' + fmax.toFixed(2) + ' (要 0..' + c.r + ')'
+        + '  横向最宽 ' + lmax.toFixed(2) + ' (要 ' + c.half + ')');
+  } else {
+    say('[2] ' + k.padEnd(7) + '圆环 半径 ' + rmin.toFixed(2) + '..' + rmax.toFixed(2) + ' (要约 ' + (c.r*0.84).toFixed(2) + '..' + c.r + ')');
+  }
+}
+say('[3] done');
+</script>
+</body>
+</html>
